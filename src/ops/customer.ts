@@ -81,8 +81,8 @@ export interface OpsCustomer {
   stage: OpsStage;
   ownerRM: string; // phone of assigned Sales/RM
   csOwner?: string; // phone of assigned CS
-  nextAction: string;
-  nextActionDueDate: Date;
+  nextAction: string; // may be empty for live stores with nothing pending
+  nextActionDueDate?: Date | null; // optional for live / live_no_whatsapp stages
   lastActivityTime: Date; // bumped on any change; drives "stale" detection
   seoEnabled: boolean;
   hasPetpooja: boolean;
