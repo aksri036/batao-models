@@ -277,6 +277,7 @@ export interface PostHistoryEntry {
   ctaActionType?: string; // which CTA (if any) was attached — lets rotation avoid immediate repeats
   flagged?: boolean; // set when still too similar to a recent post after one regenerate attempt
   mediaUrl?: string; // media bank image attached, if any
+  mediaId?: string; // media bank item id — older entries only have mediaUrl
 }
 
 // ── Media bank ─────────────────────────────────────────────────────────────────
@@ -296,6 +297,9 @@ export interface MediaBankItem {
   // admin-editable via updateMediaBankItemBlurb since the AI's first read
   // may need a correction.
   visualDescription?: string;
+  // Saved SEO keywords this photo suits — lets keyword-mode posts attach it.
+  // Only dish/ambience/other (offer/festival posters are time-bound).
+  keywords?: string[];
 }
 
 // One doc per ISO week (e.g. "2026-W39") so a week's slots are read/written
