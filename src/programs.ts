@@ -27,15 +27,18 @@ export interface ReferralProgram extends Program {
   promoterInstantDiscount?: Discount | null; //referer discount at the time he is sending referral
 }
 
-export function getMembershipDiscountString(mp: MembershipProgram): string {
+export function getMembershipDiscountString(
+  mp: MembershipProgram,
+  format: (disc: Discount | null) => string = getDiscountString,
+): string {
   let res = "";
   let joining = "";
   let next = "";
-  if (mp.joiningDiscount && getDiscountString(mp.joiningDiscount)) {
-    joining = `${getDiscountString(mp.joiningDiscount)} off on first bill`;
+  if (mp.joiningDiscount && format(mp.joiningDiscount)) {
+    joining = `${format(mp.joiningDiscount)} off on first bill`;
   }
-  if (mp.nextVisitDiscount && getDiscountString(mp.nextVisitDiscount)) {
-    next = `${getDiscountString(mp.nextVisitDiscount)} off on every visit`;
+  if (mp.nextVisitDiscount && format(mp.nextVisitDiscount)) {
+    next = `${format(mp.nextVisitDiscount)} off on every visit`;
   }
   if (joining) {
     if (next) return joining + "  \n  " + next;
@@ -46,7 +49,10 @@ export function getMembershipDiscountString(mp: MembershipProgram): string {
   return res;
 }
 
-export function getReferralDiscountString(rp: ReferralProgram): string {
+export function getReferralDiscountString(
+  rp: ReferralProgram,
+  format: (disc: Discount | null) => string = getDiscountString,
+): string {
   /**
    * You get 5% OFF today + 6% more when they visit!
 Your friend gets 7% OFF instantly.
@@ -57,17 +63,17 @@ Your friend gets 7% OFF instantly.
   let friend = "";
   if (
     rp.promoterInstantDiscount &&
-    getDiscountString(rp.promoterInstantDiscount)
+    format(rp.promoterInstantDiscount)
   ) {
-    instant = `${getDiscountString(rp.promoterInstantDiscount)} today`;
+    instant = `${format(rp.promoterInstantDiscount)} today`;
   }
-  if (rp.promoterDiscount && getDiscountString(rp.promoterDiscount)) {
-    conversion = `${getDiscountString(
+  if (rp.promoterDiscount && format(rp.promoterDiscount)) {
+    conversion = `${format(
       rp.promoterDiscount
     )} more when they visit!`;
   }
-  if (rp.friendDiscount && getDiscountString(rp.friendDiscount)) {
-    friend = `Your friend gets ${getDiscountString(
+  if (rp.friendDiscount && format(rp.friendDiscount)) {
+    friend = `Your friend gets ${format(
       rp.friendDiscount
     )} instantly.`;
   }
