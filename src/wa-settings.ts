@@ -1,3 +1,5 @@
+import { AutoCampaignTemplateKey } from "./auto-campaigns/templates";
+
 export interface WASettings {
   whitelisted?: boolean;
   phoneNumber?: string;
@@ -80,7 +82,8 @@ export interface WAAutoMsgTemplate {
     | "points-v2-redemption-otp"
     | "send-bill"
     | "win-back-redeem"
-    | "win-back-soon";
+    | "win-back-soon"
+    | AutoCampaignTemplateKey;
 
   templateName: string; // WhatsApp template name
   templateId: string; // From AiSensy/Meta
@@ -89,6 +92,7 @@ export interface WAAutoMsgTemplate {
   waTemplateType: string; //"utility" | "marketing "
   storeId: string;
   createdAt: Date;
+  templateVersion?: number; // auto campaign templates: version of the copy it was submitted with
 }
 
 export interface WAComponent {
