@@ -87,6 +87,13 @@ export interface CampaignTargetStatus {
   deliveryError?: string;
   deliveryErrorCode?: number;
   billedAt?: Date;
+  // Send attempts so far. Sends run through a Cloud Tasks queue that retries
+  // WhatsApp rate limits (Meta 130429); while retrying, sendStatus is
+  // "rate_limited". The final attempt sets "sent" or "failed".
+  attempts?: number;
+  // Last provider error (Meta code + message), set on failed/rate-limited attempts
+  lastError?: { code?: number; message: string };
+  lastAttemptAt?: Date;
 }
 
 export enum CampaignStepNames {
