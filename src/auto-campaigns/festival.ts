@@ -15,6 +15,22 @@ export interface AutoFestival {
   updatedAt: Timestamp;
 }
 
+// A store's choice for one festival, at stores/{id}/auto-festivals/{festivalId}.
+// No doc = the seller hasn't touched it: popular festivals count as picked.
+export interface StoreFestivalPick {
+  picked: boolean;
+  offerId?: string | null; // CampaignOffer id; none = greeting only
+  updatedAt?: Timestamp | Date | null;
+}
+
+// Whether the store will get a campaign for this festival.
+export function isFestivalPicked(
+  festival: AutoFestival,
+  pick?: StoreFestivalPick | null,
+): boolean {
+  return pick ? pick.picked : festival.popular;
+}
+
 // Date of the festival in the given year, or null if ops haven't set one.
 export function getFestivalDate(
   festival: AutoFestival,

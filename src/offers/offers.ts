@@ -30,7 +30,7 @@ export type Offer = {
   createdAt: Date;
   isActive: boolean;
   exclusive?: boolean;
-  type?: string | null; //birthday, anniversary, general
+  type?: string | null; //birthday, anniversary, general, auto-campaign (hidden offer behind a CampaignOffer)
 };
 
 export type OfferScreenshot = {
