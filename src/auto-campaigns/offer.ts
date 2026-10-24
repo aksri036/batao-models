@@ -24,7 +24,7 @@ export const LEGACY_STORE_OFFER_TYPES = [
 export const AUTO_CAMPAIGN_OFFER_TYPE = "auto-campaign";
 
 // A simple offer the seller attaches to auto campaigns (festivals for now).
-// Stored at stores/{id}/auto-campaign-offers/{offerId}.
+// Stored at stores/{id}/auto-campaigns/data/offers/{offerId}.
 export interface CampaignOffer {
   title: string; // seller's label, e.g. "Festive 20% off"
   benefit: Benefit; // POINTS for points stores; PERC (with optional max), AMOUNT or GIFT for legacy stores

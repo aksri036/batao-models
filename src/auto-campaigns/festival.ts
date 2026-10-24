@@ -15,7 +15,7 @@ export interface AutoFestival {
   updatedAt: Timestamp;
 }
 
-// A store's choice for one festival, at stores/{id}/auto-festivals/{festivalId}.
+// A store's choice for one festival, at stores/{id}/auto-campaigns/data/festivals/{festivalId}.
 // No doc = the seller hasn't touched it: popular festivals count as picked.
 export interface StoreFestivalPick {
   picked: boolean;
