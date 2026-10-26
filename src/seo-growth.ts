@@ -170,8 +170,43 @@ export interface GrowthSearchSnapshot {
   query: string;
   center: LatLng;
   radiusMeters: number;
+  // Text Search only accepts a rectangle as a hard limit, so the search ran
+  // over the circle's bounding box.
+  restriction: { low: LatLng; high: LatLng };
   provider: "places_v1_searchtext"; // Places API (New), locationRestriction = hard limit
+  resultCount: number;
   ranAt: Date;
+}
+
+// Lower-cased, single-spaced: two campaigns for the same cluster and
+// keyword key are the same campaign.
+export function growthKeywordKey(keyword: string): string {
+  return keyword.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+export const GROWTH_KEYWORD_SUGGESTIONS = [
+  "best cafe near me",
+  "best restaurant near me",
+  "best biryani near me",
+  "best pizza near me",
+  "family restaurant near me",
+  "rooftop restaurant near me",
+];
+
+export interface GenerateGrowthCampaignRequest {
+  clusterId: string;
+  keyword: string;
+}
+
+export interface GenerateGrowthCampaignResult {
+  campaignId: string;
+}
+
+export interface UpdateGrowthTargetRequest {
+  campaignId: string;
+  placeId: string;
+  phone?: string; // any format; normalised to E.164 (+91 assumed)
+  excludedByAdmin?: boolean;
 }
 
 export interface GrowthCompetitor {
@@ -219,6 +254,7 @@ export interface GrowthCampaign {
   clusterId: string;
   clusterLabel: string; // "Koramangala, Bangalore", copied at creation
   keyword: string;
+  keywordKey: string; // growthKeywordKey(keyword)
   search: GrowthSearchSnapshot; // frozen at generate time
   competitors: GrowthCompetitor[];
   status: GrowthCampaignStatus;
@@ -288,6 +324,9 @@ export interface GrowthTarget {
   phoneType?: PhoneType;
   phoneCandidates?: PhoneCandidate[];
   existingClientStoreId?: string;
+  // Admin unticked the row during review. Kept apart from `outcome` so
+  // re-ticking restores whatever the checks decided.
+  excludedByAdmin?: boolean;
   stage: GrowthTargetStage;
   outcome: GrowthTargetOutcome;
   active: boolean; // true while reminders may still fire
