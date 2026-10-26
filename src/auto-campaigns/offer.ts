@@ -3,6 +3,7 @@ import {
   Benefit,
   BenefitType,
   PercentageValue,
+  PointsValue,
   getBenefitMessageString,
 } from "../offers/benefits";
 
@@ -36,10 +37,13 @@ export interface CampaignOffer {
   updatedAt?: Timestamp | Date | null;
 }
 
-// Plain wording for WhatsApp messages, e.g. "20% off (up to ₹150) on a bill of ₹500 or more".
-// Adds the cap itself: getBenefitMessageString leaves it out and other
-// approved templates depend on its exact wording.
+// Plain wording for WhatsApp messages, e.g. "20% off (up to ₹150) on a bill
+// of ₹500 or more", "100 bonus points". Builds on getBenefitMessageString
+// without changing it: other approved templates depend on its exact wording.
 export function getCampaignOfferMessageString(offer: CampaignOffer): string {
+  if (offer.benefit.type === BenefitType.POINTS) {
+    return `${(offer.benefit.value as PointsValue).points} bonus points`;
+  }
   let text = getBenefitMessageString(offer.benefit);
   const max = (offer.benefit.value as PercentageValue).max;
   if (offer.benefit.type === BenefitType.PERC && max) {
