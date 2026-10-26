@@ -24,7 +24,8 @@
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "preversion": "node scripts/check-version.js"
   },
   "devDependencies": {
     "typescript": "5.7.2"

@@ -9,11 +9,12 @@ Every batao app imports its models from this package instead of keeping its own 
 1. [Rules for what goes in here](#rules-for-what-goes-in-here)
 2. [Using the models in an app](#using-the-models-in-an-app)
 3. [Which repos use it, and how](#which-repos-use-it-and-how)
-4. [Changing a model: step by step](#changing-a-model-step-by-step)
-5. [Updating an app to a new version](#updating-an-app-to-a-new-version)
-6. [Checking which version each app uses](#checking-which-version-each-app-uses)
-7. [Gotchas](#gotchas)
-8. [Troubleshooting](#troubleshooting)
+4. [Branches and versions](#branches-and-versions)
+5. [Changing a model: step by step](#changing-a-model-step-by-step)
+6. [Updating an app to a new version](#updating-an-app-to-a-new-version)
+7. [Checking which version each app uses](#checking-which-version-each-app-uses)
+8. [Gotchas](#gotchas)
+9. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -72,6 +73,35 @@ The tarball must be **committed** in each of those repos. In the backend, the ro
 
 ---
 
+## Branches and versions
+
+`main` is the release branch: urgent releases go out from it. Bigger features are built on their own long-running branch (e.g. `autocampaigns`) and released to apps on their feature branches while still in progress. Both kinds of release need version numbers, so they follow different rules that keep them from colliding:
+
+| Branch | Versions | First release on the branch | Each later release |
+|---|---|---|---|
+| `main` | Plain only: `0.2.1`, `0.3.0` | n/a | `npm version patch` (or `minor`) |
+| Feature branch, e.g. `autocampaigns` | Prereleases named after the branch: `0.3.0-autocampaigns.4` | `npm version preminor --preid=autocampaigns` | `npm version prerelease --preid=autocampaigns` |
+
+`npm version` enforces this. Its `preversion` script (`scripts/check-version.js`) refuses, without changing anything:
+
+- a version whose tag already exists, locally or on GitHub;
+- a prerelease on `main`, or a plain version on any other branch;
+- a feature prerelease based on a version that's already released (e.g. `0.3.0-autocampaigns.2` once `0.3.0` is out). The error message gives the version to move to.
+
+`ALLOW_ANY_VERSION=1 npm version …` skips the checks. Use it only if you're sure.
+
+**The feature branch's life cycle:**
+
+1. **Start:** `npm version preminor --preid=<branch>` on the branch gives `<next minor>-<branch>.0`.
+2. **While it's in progress:** after every `main` release, merge `main` into the branch, so the branch's apps keep getting urgent fixes. If `package.json` conflicts on `version`, keep the branch's prerelease version.
+3. **Done:** merge `main` into the branch one last time, then merge the branch into `main`, and on `main` run `npm version minor`. That is the first plain version containing the feature.
+
+**Apps:** an app's production branch may only use plain versions. Prerelease versions are for that app's matching feature branch.
+
+**Earlier releases.** v0.1.4 to v0.2.0 were released as plain versions from `autocampaigns` before these rules existed. Those tags stay as they are, since apps may use them. `main` carries on after the highest number (v0.2.1), and `autocampaigns` switches to `0.3.0-autocampaigns.N`.
+
+---
+
 ## Changing a model: step by step
 
 Example: adding an optional `keywords?: string[]` field to `MediaBankItem` in `src/gmb/types.ts`.
@@ -96,28 +126,32 @@ npm run typecheck
 
 ### 4. Bump the version and tag
 
-Commit your change first, then let npm bump the version, commit it and create the git tag in one step:
+Commit your change first, then let npm bump the version, commit it and create the git tag in one step. On `main`:
 
 ```sh
 git add src/
 git commit -m "gmb types: MediaBankItem.keywords"
-npm version patch        # 0.1.3 -> 0.1.4, commits and tags v0.1.4
-git push && git push --tags
+npm version patch        # 0.2.1 -> 0.2.2, commits and tags v0.2.2
+git push && git push origin v0.2.2
 ```
 
-Which bump to use:
+On a feature branch, use `npm version prerelease --preid=<branch>` instead ([Branches and versions](#branches-and-versions)).
+
+Push only the tag you just created, not `git push --tags`, so stray local tags never reach GitHub.
+
+Which bump to use on `main`:
 
 | Change | Command | Example |
 |---|---|---|
-| New optional field, new type, new helper, bug fix | `npm version patch` | 0.1.3 → 0.1.4 |
-| Rename/remove a field, make a field required, change a helper's output | `npm version minor` | 0.1.3 → 0.2.0 |
+| New optional field, new type, new helper, bug fix | `npm version patch` | 0.2.1 → 0.2.2 |
+| Rename/remove a field, make a field required, change a helper's output, or a feature branch merged in | `npm version minor` | 0.2.1 → 0.3.0 |
 
 A **minor** bump signals that the change can break apps. Before releasing one, search all four repos for uses of what you changed.
 
 Confirm the tag reached GitHub:
 
 ```sh
-git ls-remote --tags origin      # should list refs/tags/v0.1.4
+git ls-remote --tags origin      # should list refs/tags/v0.2.2
 ```
 
 ### 5. Build the tarball (for frontend, backend and storefront)
