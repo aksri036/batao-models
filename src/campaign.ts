@@ -87,6 +87,9 @@ export interface CampaignTargetStatus {
   deliveryError?: string;
   deliveryErrorCode?: number;
   billedAt?: Date;
+  attempts?: number;
+  lastError?: { code?: number; message: string };
+  lastAttemptAt?: Date;
 }
 
 export enum CampaignStepNames {
