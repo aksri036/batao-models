@@ -1,4 +1,4 @@
-// SEO Growth hack: outbound WhatsApp outreach to restaurants that rank 4–20
+// SEO Growth hack: outbound WhatsApp outreach to restaurants that rank 4–60
 // for a keyword in a cluster (city area). Everything lives under the single
 // top-level `seo-growth` collection:
 //
@@ -174,8 +174,22 @@ export interface GrowthSearchSnapshot {
   // over the circle's bounding box.
   restriction: { low: LatLng; high: LatLng };
   provider: "places_v1_searchtext"; // Places API (New), locationRestriction = hard limit
+  depth?: GrowthSearchDepth; // results requested; missing on campaigns made before depth existed (20)
   resultCount: number;
   ranAt: Date;
+}
+
+// Text Search returns at most 3 pages of 20 for any query.
+export type GrowthSearchDepth = 20 | 40 | 60;
+export const GROWTH_SEARCH_DEPTHS: GrowthSearchDepth[] = [20, 40, 60];
+export const DEFAULT_GROWTH_SEARCH_DEPTH: GrowthSearchDepth = 60;
+
+// Ranks up to here are on Google's first page ("you're #9, A, B and C are
+// above you"); later ranks get the "you're not on the first page" message.
+export const GROWTH_PAGE_ONE_LAST_RANK = 20;
+
+export function isPageOneRank(rank: number): boolean {
+  return rank <= GROWTH_PAGE_ONE_LAST_RANK;
 }
 
 // Lower-cased, single-spaced: two campaigns for the same cluster and
@@ -196,6 +210,7 @@ export const GROWTH_KEYWORD_SUGGESTIONS = [
 export interface GenerateGrowthCampaignRequest {
   clusterId: string;
   keyword: string;
+  depth?: GrowthSearchDepth; // default DEFAULT_GROWTH_SEARCH_DEPTH
 }
 
 export interface GenerateGrowthCampaignResult {
@@ -313,7 +328,7 @@ export type GrowthTargetOutcome =
 export interface GrowthTarget {
   placeId: string;
   campaignId: string;
-  rank: number; // 4–20
+  rank: number; // 4–60; see isPageOneRank for which message it gets
   name: string;
   address?: string;
   rating?: number;
