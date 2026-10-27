@@ -1,6 +1,6 @@
 {
   "name": "@batao/models",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Shared data models for batao frontend, backend and admin",
   "private": true,
   "license": "UNLICENSED",
