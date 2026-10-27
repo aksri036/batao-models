@@ -268,6 +268,7 @@ export interface GrowthCampaignCounts {
   replied: number;
   optedOut: number;
   cold: number;
+  reminders?: number; // reminder messages sent (not restaurants)
 }
 
 export function createEmptyGrowthCounts(): GrowthCampaignCounts {
@@ -401,6 +402,48 @@ export interface GrowthTargetEvent {
   at: Date;
   msgId?: string;
   meta?: Record<string, unknown>;
+}
+
+// One entry per target with something still to do, at
+// seo-growth/data/queue/{campaignId}_{placeId}. The send dispatcher works
+// through entries whose dueAt has passed: "intro" and "reminder" are sends
+// (counted against the daily cap, only inside the send window), "cold" just
+// closes the target at day 30. Converting, opting out or turning out not to
+// be on WhatsApp deletes the entry.
+export type GrowthQueueKind = "intro" | "reminder" | "cold";
+
+export interface GrowthQueueItem {
+  campaignId: string;
+  placeId: string;
+  kind: GrowthQueueKind;
+  reminderIndex?: number; // which of GrowthConfig.reminderDays, for "reminder"
+  dueAt: Date;
+  attempts: number;
+  lastError?: string;
+  createdAt: Date;
+}
+
+export const growthQueueId = (campaignId: string, placeId: string) => `${campaignId}_${placeId}`;
+
+// Messages actually sent on one IST day, across all campaigns, at
+// seo-growth/data/daily/{YYYY-MM-DD}; the dispatcher stops at dailyCap.
+export interface GrowthDailyCounter {
+  date: string;
+  sent: number;
+}
+
+export interface ApproveGrowthCampaignRequest {
+  campaignId: string;
+}
+
+export interface ApproveGrowthCampaignResult {
+  queued: number;
+  skipped: number; // contacted by another campaign or opted out since generating
+}
+
+export interface SendGrowthReplyRequest {
+  phone: string; // conversation id, E.164
+  text: string;
 }
 
 export interface GrowthContact {
