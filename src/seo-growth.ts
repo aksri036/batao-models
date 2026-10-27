@@ -240,6 +240,13 @@ export interface GenerateGrowthCampaignResult {
   campaignId: string;
 }
 
+// Re-runs a draft with today's Google results; returns the new campaign's id
+// (the old draft is deleted).
+export interface RegenerateGrowthCampaignRequest {
+  campaignId: string;
+  depth?: GrowthSearchDepth; // default DEFAULT_GROWTH_SEARCH_DEPTH
+}
+
 export interface UpdateGrowthTargetRequest {
   campaignId: string;
   placeId: string;
