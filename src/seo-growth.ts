@@ -452,9 +452,25 @@ export interface GrowthMessage {
 
 export type EnquiryRole = "owner" | "manager" | "staff";
 
-// Optional fields added to the existing `enquiries` doc for growth enquiries.
-export interface EnquiryGrowthFields {
+// Fields the visibility-audit form adds to a `seo-enquiries` doc. Name and
+// role are asked of every visitor; growthToken only when they arrived from a
+// growth message link (batao.ai/g/{token}). The website keeps its own copy of
+// these field names until it moves past models 0.1.4.
+export interface SeoEnquiryGrowthFields {
+  contactName?: string;
   role?: EnquiryRole;
-  growthCampaignId?: string;
-  growthPlaceId?: string;
+  growthToken?: string;
+}
+
+// Called by the visibility-audit page when opened from a growth link: logs
+// the click and returns what's needed to pre-select the restaurant.
+export interface GrowthLinkOpenRequest {
+  token: string;
+}
+
+export interface GrowthLinkOpenResult {
+  placeId: string;
+  restaurantName: string;
+  address?: string;
+  campaignId: string;
 }
