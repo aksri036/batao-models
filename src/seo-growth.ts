@@ -446,6 +446,19 @@ export interface SendGrowthReplyRequest {
   text: string;
 }
 
+// Sends one template, filled with a real target's data, to an admin's own
+// number. Recorded as "SEO Growth Test": never moves the target's funnel.
+export interface SendGrowthTestRequest {
+  campaignId: string;
+  placeId: string;
+  phone: string; // any format; normalised to E.164 (+91 assumed)
+  template: GrowthTemplateKey;
+}
+
+export interface SendGrowthTestResult {
+  msgId: string;
+}
+
 export interface GrowthContact {
   placeId: string;
   phone?: string;
@@ -466,6 +479,9 @@ export interface GrowthLink {
   campaignId: string;
   placeId: string;
   createdAt: Date;
+  // Link inside a test message: the page still pre-fills, but opening it or
+  // submitting the form never touches the real target's funnel.
+  test?: boolean;
 }
 
 export interface GrowthConversation {
