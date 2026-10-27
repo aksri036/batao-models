@@ -380,6 +380,7 @@ export interface GrowthTarget {
   enquiryId?: string;
   lastReplyAt?: Date;
   lastMsgId?: string;
+  cardUrl?: string; // ranking card sent with the first message
 }
 
 export type GrowthEventType =
@@ -482,6 +483,7 @@ export interface GrowthLink {
   // Link inside a test message: the page still pre-fills, but opening it or
   // submitting the form never touches the real target's funnel.
   test?: boolean;
+  cardUrl?: string; // test links: the card that test message carried
 }
 
 export interface GrowthConversation {
@@ -532,4 +534,7 @@ export interface GrowthLinkOpenResult {
   restaurantName: string;
   address?: string;
   campaignId: string;
+  // The ranking card from their message. Tapping the image in WhatsApp opens
+  // the link, so the landing page shows the card full size.
+  cardUrl?: string;
 }
