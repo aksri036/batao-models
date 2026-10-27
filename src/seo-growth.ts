@@ -16,7 +16,7 @@
 export interface GrowthConfig {
   storeId: string; // internal store whose waSettings send the messages
   wabaId: string; // routes inbound messages / statuses to the growth module
-  templates: { initial: string; reminder: string; reminderClicked: string };
+  templates: Record<GrowthTemplateKey, string>; // key → WhatsApp template name
   dailyCap: number;
   sendWindowIST: { startHour: number; endHour: number };
   reminderDays: number[]; // days after first send, e.g. [5, 12, 21]
@@ -32,6 +32,29 @@ export const DEFAULT_GROWTH_CONFIG: Omit<GrowthConfig, "wabaId" | "templates"> =
   coldAfterDays: 30,
   linkBaseUrl: "https://batao.ai/g/",
 };
+
+// intro: first message, ranking card as the image header (all ranks).
+// reminder: no click yet. reminderClicked: clicked but no enquiry.
+export type GrowthTemplateKey = "intro" | "reminder" | "reminderClicked";
+export const GROWTH_TEMPLATE_KEYS: GrowthTemplateKey[] = ["intro", "reminder", "reminderClicked"];
+
+// Doc at seo-growth/data/templates/{key}. The AiSensy status webhook writes
+// `status` (lower-case) and `waTemplateStatus` here as Meta reviews it.
+export interface GrowthTemplateRecord {
+  key: GrowthTemplateKey;
+  name: string; // versioned, e.g. batao_growth_intro_v1; bump to resubmit
+  templateId?: string;
+  status: string; // "processing" | "approved" | "rejected" | …
+  waTemplateStatus?: string;
+  submittedAt: Date;
+  error?: string;
+}
+
+export interface SubmitGrowthTemplatesResult {
+  submitted: GrowthTemplateKey[];
+  skipped: GrowthTemplateKey[]; // already pending or approved
+  failed: { key: GrowthTemplateKey; error: string }[];
+}
 
 export interface LatLng {
   lat: number;
