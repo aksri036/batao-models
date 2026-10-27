@@ -70,6 +70,32 @@ export function seoReportCellKey(keyword: string, area: string): string {
   return `${norm(keyword)}|${norm(area)}`;
 }
 
+// What the salesperson edits on top of the research. Anything left unset is
+// filled from the data when the report is built (see the backend builder).
+export interface SeoReportContent {
+  headline?: string;
+  observationTitle?: string;
+  observationBody?: string;
+  checkItYourself?: { keyword: string; area: string };
+  avgBill?: number; // ₹ per guest; drives the cost tiles
+  benefits?: { lead: string; text: string }[];
+}
+
+// The cost tiles: Google doesn't publish search volumes, so these are an
+// estimate from fixed assumptions plus the restaurant's average bill.
+export const SEO_REPORT_COST_ASSUMPTIONS = {
+  searchesPerKeywordAreaPerMonth: 1250,
+  shareWhoWouldChoose: 0.05, // of people searching, share who'd pick a #1-ranked place nearby
+};
+
+// Default average bill per guest from Google's price level.
+export function seoReportDefaultAvgBill(priceLevel?: number): number {
+  return ({ 1: 250, 2: 500, 3: 900, 4: 1500 } as Record<number, number>)[priceLevel ?? 0] ?? 500;
+}
+
+// Max ticked keywords: the search table must fit on page 1 of the PDF.
+export const SEO_REPORT_MAX_INCLUDED_KEYWORDS = 8;
+
 export interface SeoReport {
   id: string;
   restaurant: SeoReportPlace | null;
@@ -79,6 +105,7 @@ export interface SeoReport {
   keywords: SeoReportKeyword[];
   cells: Record<string, SeoReportCell>; // by seoReportCellKey
   researchedAt?: Date;
+  content?: SeoReportContent;
   status: "draft" | "ready";
   pdfUrl?: string;
   pdfGeneratedAt?: Date;
@@ -86,6 +113,51 @@ export interface SeoReport {
   createdByName?: string;
   createdAt: Date;
   updatedAt: Date;
+}
+
+// ─── The rendered report ────────────────────────────────────────────────────
+// Exactly what goes into the PDF, block by block. Built by the backend from a
+// SeoReport; the admin app shows it as a preview.
+
+export type AuditSeverity = "critical" | "strength";
+
+export interface AuditStatTile {
+  severity: AuditSeverity;
+  value: string; // "1 of 12", "2.7 km", "₹50 lakh+"
+  caption: string;
+}
+
+export interface AuditSearchResult {
+  rank: number | null; // null = not in the top 20
+  topResult: string; // who Google shows first
+}
+
+export interface AuditSearchRow {
+  query: string;
+  results: AuditSearchResult[]; // same order as VisibilityAuditReport.areas
+}
+
+export interface AuditCompetitor {
+  name: string;
+  distance: string; // "400 m", "2.7 km"
+  winsFor: string;
+}
+
+export interface VisibilityAuditReport {
+  restaurant: { name: string; landmark: string; city: string };
+  areas: string[];
+  capturedOn: Date;
+  headline: string;
+  scorecard: AuditStatTile[];
+  searches: AuditSearchRow[];
+  observation: { title: string; body: string };
+  checkItYourself: { query: string; area: string; shownInstead: string };
+  competitors: AuditCompetitor[];
+  costs: AuditStatTile[];
+  clientBrands: string[];
+  benefits: { lead: string; text: string }[];
+  closingLine: string;
+  contact: { phone: string; email: string; website: string };
 }
 
 // ─── Callables ──────────────────────────────────────────────────────────────
@@ -113,4 +185,26 @@ export interface RunReportResearchRequest {
 
 export interface RunReportResearchResult {
   searched: number; // new Google searches made (already-researched cells are kept)
+}
+
+export interface SeoReportIdRequest {
+  reportId: string;
+}
+
+// Over the wire (callable JSON), dates arrive as ISO strings.
+export interface PreviewSeoReportResult {
+  report: Omit<VisibilityAuditReport, "capturedOn"> & { capturedOn: string };
+  avgBill: number; // the one used (edited or the price-level default)
+  warnings: string[]; // e.g. keywords not researched yet; generation still possible
+  blockers: string[]; // must be fixed before generating the PDF
+}
+
+export interface DraftReportNarrativeResult {
+  headline: string;
+  observationTitle: string;
+  observationBody: string;
+}
+
+export interface GenerateReportPdfResult {
+  url: string;
 }
