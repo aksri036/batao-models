@@ -38,7 +38,16 @@ export interface BtCampaign {
   previouslyRanCampaigns?: string[]; //parent campaigns list, in case it was created by retargeting existing campaign
   offerId?: string; //campaign was created by an offer. Template will get view offer button url.
 
-  campaignType?: "gift" | "ask";
+  // What the campaign gives the guest. Drives side effects, not template
+  // filling (see bodyParams/buttonParams below):
+  //   gift:     pointsGrant is credited to every recipient before sending
+  //   ask:      asks the guest to act (askAction); its template is submitted as MARKETING
+  //   offer:    carries a coupon offer (offerId); guests claim it from the button link
+  //   greeting: a message only, nothing to grant or claim
+  // Only "gift" and "ask" are checked by the backend; other values (and unset,
+  // used by older campaigns) take the default path. Auto campaigns set it too,
+  // alongside autoCampaign.type, which says where the campaign came from.
+  campaignType?: "gift" | "ask" | "offer" | "greeting";
   templateId?: string;
   pointsGrant?: { points: number; expiryDays?: number };
   askAction?: "google_review" | "instagram_tag" | "referral";
