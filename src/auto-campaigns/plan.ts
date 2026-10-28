@@ -5,10 +5,25 @@ import { AutoCampaignTemplateKey } from "./templates";
 // later "dish", "event", "winback", "occasion", "review", "referral".
 export type AutoCampaignType = "festival";
 
-// planned: will be sent (step 3 adds approval and send states)
-// dropped: picked by the seller but left out (e.g. over budget, no capacity)
-// blocked: can't be sent until something is fixed (e.g. template not approved, no image)
-export type AutoCampaignPlanEntryStatus = "planned" | "dropped" | "blocked";
+// Plan entry lifecycle. These are plan statuses only; the campaign docs
+// created for an entry keep the normal campaign statuses.
+// planned:  built by the planner, waiting for approval (review mode)
+// dropped:  picked by the seller but left out (e.g. over budget, no capacity)
+// blocked:  can't be sent until something is fixed (e.g. template not approved, no image)
+// approved: will be sent on its send dates (seller approved, or autopilot)
+// skipped:  won't be sent (seller skipped, not approved by the send day, auto campaigns off, input gone)
+// sending:  campaign(s) created on a send day; more days may follow
+// sent:     all send days done
+// failed:   couldn't create the campaign on a send day
+export type AutoCampaignPlanEntryStatus =
+  | "planned"
+  | "dropped"
+  | "blocked"
+  | "approved"
+  | "skipped"
+  | "sending"
+  | "sent"
+  | "failed";
 
 // Fields every campaign type shares. Planner budget/capacity, audience
 // selection, sending and the calendar use only these.
@@ -31,7 +46,11 @@ export interface AutoCampaignPlanEntryBase {
   audienceCount: number; // estimated at planning time; the final list is picked at send time
   estimatedCost: number; // in paise
   status: AutoCampaignPlanEntryStatus;
-  reason?: string | null; // why dropped or blocked
+  reason?: string | null; // why dropped, blocked, skipped or failed
+  approvedBy?: string | null; // seller uid, or "autopilot"
+  approvedAt?: Timestamp | Date | null;
+  skippedBy?: string | null; // seller uid, or "system"
+  campaignIds?: string[]; // store-campaigns docs created for this entry, one per send day
 }
 
 // One interface per campaign type, carrying where the campaign comes from.

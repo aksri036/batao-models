@@ -59,7 +59,24 @@ export interface BtCampaign {
   // Effectiveness — recipients who ordered within the attribution window
   visitsAttributed?: number;
   revenueAttributed?: number;
+
+  // Auto campaigns only. Normal campaigns never set these, so their send
+  // path is unchanged. Created with status "approved" and the store's
+  // pre-approved template, so no template is submitted.
+  autoCampaign?: {
+    month: string; // "YYYY-MM" plan the entry belongs to
+    entryId: string; // AutoCampaignPlanEntry id
+    type: string; // AutoCampaignType, e.g. "festival"
+    sendDate: string; // "YYYY-MM-DD" (IST) send day this campaign covers
+  } | null;
+  bodyParams?: string[] | null; // template {{1}}..{{n}} values; AUTO_CAMPAIGN_NAME_TOKEN is replaced by each guest's name
+  buttonUrlSuffix?: string | null; // value for the URL button's {{1}} (path after BATAO_URL)
 }
+
+// Placeholder in BtCampaign.bodyParams replaced per recipient with the
+// guest's name ("Guest" when unknown).
+export const AUTO_CAMPAIGN_NAME_TOKEN = "{{guestName}}";
+export const AUTO_CAMPAIGN_NAME_FALLBACK = "Guest";
 
 export const createEmptyCampaign = (): BtCampaign => ({
   id: "",
