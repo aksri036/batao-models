@@ -60,23 +60,37 @@ export interface BtCampaign {
   visitsAttributed?: number;
   revenueAttributed?: number;
 
-  // Auto campaigns only. Normal campaigns never set these, so their send
-  // path is unchanged. Created with status "approved" and the store's
-  // pre-approved template, so no template is submitted.
+  // ---------------------------------------------------------------------------
+  // Template values. A campaign may declare how its WhatsApp template's
+  // variables are filled, so any template can be sent without changing the
+  // sender. When these are absent the sender falls back to the older inferred
+  // convention: body {{1}}=guest name, {{2}}=points, {{3}}=store name,
+  // {{4}}=expiry days, and the URL button gets the claim-offer link only when
+  // offerId is set. Existing campaigns don't set them, so they are unaffected.
+  // ---------------------------------------------------------------------------
+  // Values for the template body {{1}}..{{n}}, in order. CAMPAIGN_GUEST_NAME_TOKEN
+  // anywhere in a value is replaced with each recipient's name.
+  bodyParams?: string[] | null;
+  // Values for the template's URL button(s) {{1}}, by button index. Each is the
+  // part of the URL after the template's base (e.g. "spicegarden/dashboard").
+  buttonParams?: string[] | null;
+
+  // Set when the campaign was created by auto campaigns from a monthly plan
+  // entry (it is created with status "approved" and the store's pre-approved
+  // template, so no template is submitted). Used to link the campaign back to
+  // its plan and to keep it out of the manual campaign lists.
   autoCampaign?: {
     month: string; // "YYYY-MM" plan the entry belongs to
     entryId: string; // AutoCampaignPlanEntry id
     type: string; // AutoCampaignType, e.g. "festival"
     sendDate: string; // "YYYY-MM-DD" (IST) send day this campaign covers
   } | null;
-  bodyParams?: string[] | null; // template {{1}}..{{n}} values; AUTO_CAMPAIGN_NAME_TOKEN is replaced by each guest's name
-  buttonUrlSuffix?: string | null; // value for the URL button's {{1}} (path after BATAO_URL)
 }
 
 // Placeholder in BtCampaign.bodyParams replaced per recipient with the
-// guest's name ("Guest" when unknown).
-export const AUTO_CAMPAIGN_NAME_TOKEN = "{{guestName}}";
-export const AUTO_CAMPAIGN_NAME_FALLBACK = "Guest";
+// guest's name, or CAMPAIGN_GUEST_NAME_FALLBACK when the name is unknown.
+export const CAMPAIGN_GUEST_NAME_TOKEN = "{{guestName}}";
+export const CAMPAIGN_GUEST_NAME_FALLBACK = "Guest";
 
 export const createEmptyCampaign = (): BtCampaign => ({
   id: "",
