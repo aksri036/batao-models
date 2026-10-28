@@ -21,6 +21,7 @@ export const LEGACY_STORE_OFFER_TYPES = [
 
 // Value used for Offer.type on the plain Offer created behind a legacy
 // store's campaign offer, so the existing claim and redeem flows work.
+// One is created per plan entry (AutoCampaignPlanEntry.offer.hiddenOfferId).
 // Such offers are hidden from the seller's "My Offers" list.
 export const AUTO_CAMPAIGN_OFFER_TYPE = "auto-campaign";
 
@@ -31,7 +32,7 @@ export interface CampaignOffer {
   benefit: Benefit; // POINTS for points stores; PERC (with optional max), AMOUNT or GIFT for legacy stores
   minBillAmount?: number | null; // ₹, legacy stores only
   validityDays: number; // points expire / coupon valid this many days after the campaign is sent
-  offerId?: string | null; // legacy stores: the hidden Offer (type AUTO_CAMPAIGN_OFFER_TYPE) behind it
+  offerId?: string | null; // unused: hidden Offers are made per plan entry (AutoCampaignPlanEntry.offer.hiddenOfferId)
   active: boolean;
   createdAt: Timestamp | Date;
   updatedAt?: Timestamp | Date | null;

@@ -38,6 +38,11 @@ export interface AutoCampaignPlanEntryBase {
     offerId: string; // CampaignOffer id
     text: string; // snapshot of the offer wording when planned
     validityDays: number;
+    // Legacy stores: the hidden Offer (type AUTO_CAMPAIGN_OFFER_TYPE) created
+    // for this entry at its first send, reused on later send days. One per
+    // entry, since a guest gets one coupon per Offer and the coupon expires
+    // at Offer.validTo.
+    hiddenOfferId?: string | null;
   } | null; // null = without offer
   image?: {
     url: string;
