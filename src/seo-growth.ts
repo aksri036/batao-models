@@ -1,4 +1,4 @@
-// SEO Growth hack: outbound WhatsApp outreach to restaurants that rank 4–20
+// SEO Growth hack: outbound WhatsApp outreach to restaurants that rank 4–60
 // for a keyword in a cluster (city area). Everything lives under the single
 // top-level `seo-growth` collection:
 //
@@ -16,7 +16,7 @@
 export interface GrowthConfig {
   storeId: string; // internal store whose waSettings send the messages
   wabaId: string; // routes inbound messages / statuses to the growth module
-  templates: { initial: string; reminder: string; reminderClicked: string };
+  templates: Record<GrowthTemplateKey, string>; // key → WhatsApp template name
   dailyCap: number;
   sendWindowIST: { startHour: number; endHour: number };
   reminderDays: number[]; // days after first send, e.g. [5, 12, 21]
@@ -32,6 +32,29 @@ export const DEFAULT_GROWTH_CONFIG: Omit<GrowthConfig, "wabaId" | "templates"> =
   coldAfterDays: 30,
   linkBaseUrl: "https://batao.ai/g/",
 };
+
+// intro: first message, ranking card as the image header (all ranks).
+// reminder: no click yet. reminderClicked: clicked but no enquiry.
+export type GrowthTemplateKey = "intro" | "reminder" | "reminderClicked";
+export const GROWTH_TEMPLATE_KEYS: GrowthTemplateKey[] = ["intro", "reminder", "reminderClicked"];
+
+// Doc at seo-growth/data/templates/{key}. The AiSensy status webhook writes
+// `status` (lower-case) and `waTemplateStatus` here as Meta reviews it.
+export interface GrowthTemplateRecord {
+  key: GrowthTemplateKey;
+  name: string; // versioned, e.g. batao_growth_intro_v1; bump to resubmit
+  templateId?: string;
+  status: string; // "processing" | "approved" | "rejected" | …
+  waTemplateStatus?: string;
+  submittedAt: Date;
+  error?: string;
+}
+
+export interface SubmitGrowthTemplatesResult {
+  submitted: GrowthTemplateKey[];
+  skipped: GrowthTemplateKey[]; // already pending or approved
+  failed: { key: GrowthTemplateKey; error: string }[];
+}
 
 export interface LatLng {
   lat: number;
@@ -170,8 +193,65 @@ export interface GrowthSearchSnapshot {
   query: string;
   center: LatLng;
   radiusMeters: number;
+  // Text Search only accepts a rectangle as a hard limit, so the search ran
+  // over the circle's bounding box.
+  restriction: { low: LatLng; high: LatLng };
   provider: "places_v1_searchtext"; // Places API (New), locationRestriction = hard limit
+  depth?: GrowthSearchDepth; // results requested; missing on campaigns made before depth existed (20)
+  resultCount: number;
   ranAt: Date;
+}
+
+// Text Search returns at most 3 pages of 20 for any query.
+export type GrowthSearchDepth = 20 | 40 | 60;
+export const GROWTH_SEARCH_DEPTHS: GrowthSearchDepth[] = [20, 40, 60];
+export const DEFAULT_GROWTH_SEARCH_DEPTH: GrowthSearchDepth = 60;
+
+// Ranks up to here are on Google's first page ("you're #9, A, B and C are
+// above you"); later ranks get the "you're not on the first page" message.
+export const GROWTH_PAGE_ONE_LAST_RANK = 20;
+
+export function isPageOneRank(rank: number): boolean {
+  return rank <= GROWTH_PAGE_ONE_LAST_RANK;
+}
+
+// Lower-cased, single-spaced: two campaigns for the same cluster and
+// keyword key are the same campaign.
+export function growthKeywordKey(keyword: string): string {
+  return keyword.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+export const GROWTH_KEYWORD_SUGGESTIONS = [
+  "best cafe near me",
+  "best restaurant near me",
+  "best biryani near me",
+  "best pizza near me",
+  "family restaurant near me",
+  "rooftop restaurant near me",
+];
+
+export interface GenerateGrowthCampaignRequest {
+  clusterId: string;
+  keyword: string;
+  depth?: GrowthSearchDepth; // default DEFAULT_GROWTH_SEARCH_DEPTH
+}
+
+export interface GenerateGrowthCampaignResult {
+  campaignId: string;
+}
+
+// Re-runs a draft with today's Google results; returns the new campaign's id
+// (the old draft is deleted).
+export interface RegenerateGrowthCampaignRequest {
+  campaignId: string;
+  depth?: GrowthSearchDepth; // default DEFAULT_GROWTH_SEARCH_DEPTH
+}
+
+export interface UpdateGrowthTargetRequest {
+  campaignId: string;
+  placeId: string;
+  phone?: string; // any format; normalised to E.164 (+91 assumed)
+  excludedByAdmin?: boolean;
 }
 
 export interface GrowthCompetitor {
@@ -195,6 +275,7 @@ export interface GrowthCampaignCounts {
   replied: number;
   optedOut: number;
   cold: number;
+  reminders?: number; // reminder messages sent (not restaurants)
 }
 
 export function createEmptyGrowthCounts(): GrowthCampaignCounts {
@@ -219,6 +300,7 @@ export interface GrowthCampaign {
   clusterId: string;
   clusterLabel: string; // "Koramangala, Bangalore", copied at creation
   keyword: string;
+  keywordKey: string; // growthKeywordKey(keyword)
   search: GrowthSearchSnapshot; // frozen at generate time
   competitors: GrowthCompetitor[];
   status: GrowthCampaignStatus;
@@ -277,7 +359,7 @@ export type GrowthTargetOutcome =
 export interface GrowthTarget {
   placeId: string;
   campaignId: string;
-  rank: number; // 4–20
+  rank: number; // 4–60; see isPageOneRank for which message it gets
   name: string;
   address?: string;
   rating?: number;
@@ -288,6 +370,9 @@ export interface GrowthTarget {
   phoneType?: PhoneType;
   phoneCandidates?: PhoneCandidate[];
   existingClientStoreId?: string;
+  // Admin unticked the row during review. Kept apart from `outcome` so
+  // re-ticking restores whatever the checks decided.
+  excludedByAdmin?: boolean;
   stage: GrowthTargetStage;
   outcome: GrowthTargetOutcome;
   active: boolean; // true while reminders may still fire
@@ -302,6 +387,7 @@ export interface GrowthTarget {
   enquiryId?: string;
   lastReplyAt?: Date;
   lastMsgId?: string;
+  cardUrl?: string; // ranking card sent with the first message
 }
 
 export type GrowthEventType =
@@ -326,6 +412,61 @@ export interface GrowthTargetEvent {
   meta?: Record<string, unknown>;
 }
 
+// One entry per target with something still to do, at
+// seo-growth/data/queue/{campaignId}_{placeId}. The send dispatcher works
+// through entries whose dueAt has passed: "intro" and "reminder" are sends
+// (counted against the daily cap, only inside the send window), "cold" just
+// closes the target at day 30. Converting, opting out or turning out not to
+// be on WhatsApp deletes the entry.
+export type GrowthQueueKind = "intro" | "reminder" | "cold";
+
+export interface GrowthQueueItem {
+  campaignId: string;
+  placeId: string;
+  kind: GrowthQueueKind;
+  reminderIndex?: number; // which of GrowthConfig.reminderDays, for "reminder"
+  dueAt: Date;
+  attempts: number;
+  lastError?: string;
+  createdAt: Date;
+}
+
+export const growthQueueId = (campaignId: string, placeId: string) => `${campaignId}_${placeId}`;
+
+// Messages actually sent on one IST day, across all campaigns, at
+// seo-growth/data/daily/{YYYY-MM-DD}; the dispatcher stops at dailyCap.
+export interface GrowthDailyCounter {
+  date: string;
+  sent: number;
+}
+
+export interface ApproveGrowthCampaignRequest {
+  campaignId: string;
+}
+
+export interface ApproveGrowthCampaignResult {
+  queued: number;
+  skipped: number; // contacted by another campaign or opted out since generating
+}
+
+export interface SendGrowthReplyRequest {
+  phone: string; // conversation id, E.164
+  text: string;
+}
+
+// Sends one template, filled with a real target's data, to an admin's own
+// number. Recorded as "SEO Growth Test": never moves the target's funnel.
+export interface SendGrowthTestRequest {
+  campaignId: string;
+  placeId: string;
+  phone: string; // any format; normalised to E.164 (+91 assumed)
+  template: GrowthTemplateKey;
+}
+
+export interface SendGrowthTestResult {
+  msgId: string;
+}
+
 export interface GrowthContact {
   placeId: string;
   phone?: string;
@@ -346,6 +487,10 @@ export interface GrowthLink {
   campaignId: string;
   placeId: string;
   createdAt: Date;
+  // Link inside a test message: the page still pre-fills, but opening it or
+  // submitting the form never touches the real target's funnel.
+  test?: boolean;
+  cardUrl?: string; // test links: the card that test message carried
 }
 
 export interface GrowthConversation {
@@ -375,9 +520,28 @@ export interface GrowthMessage {
 
 export type EnquiryRole = "owner" | "manager" | "staff";
 
-// Optional fields added to the existing `enquiries` doc for growth enquiries.
-export interface EnquiryGrowthFields {
+// Fields the visibility-audit form adds to a `seo-enquiries` doc. Name and
+// role are asked of every visitor; growthToken only when they arrived from a
+// growth message link (batao.ai/g/{token}). The website keeps its own copy of
+// these field names until it moves past models 0.1.4.
+export interface SeoEnquiryGrowthFields {
+  contactName?: string;
   role?: EnquiryRole;
-  growthCampaignId?: string;
-  growthPlaceId?: string;
+  growthToken?: string;
+}
+
+// Called by the visibility-audit page when opened from a growth link: logs
+// the click and returns what's needed to pre-select the restaurant.
+export interface GrowthLinkOpenRequest {
+  token: string;
+}
+
+export interface GrowthLinkOpenResult {
+  placeId: string;
+  restaurantName: string;
+  address?: string;
+  campaignId: string;
+  // The ranking card from their message. Tapping the image in WhatsApp opens
+  // the link, so the landing page shows the card full size.
+  cardUrl?: string;
 }
