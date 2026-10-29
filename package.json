@@ -1,6 +1,6 @@
 {
   "name": "@batao/models",
-  "version": "0.3.0-autocampaigns.5",
+  "version": "0.3.0-autocampaigns.6",
   "description": "Shared data models for batao frontend, backend and admin",
   "private": true,
   "license": "UNLICENSED",
