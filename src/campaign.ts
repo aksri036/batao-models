@@ -56,6 +56,7 @@ export interface BtCampaign {
   // Send-path counters (set during fan-out)
   total?: number;
   limitedCount?: number;
+  optedOutCount?: number; // recipients left out because they opted out of the store's offers
   scheduledCount?: number;
   sentCount?: number;
   sendFailedCount?: number;
