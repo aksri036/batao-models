@@ -1,5 +1,6 @@
 import { Timestamp } from "../timestamp";
 import { AutoCampaignTemplateKey } from "./templates";
+import { AutoCampaignCustomMessage } from "./custom-message";
 
 // Campaign types an auto campaign plan can hold. Festivals only for now;
 // later "dish", "event", "winback", "occasion", "review", "referral".
@@ -53,6 +54,8 @@ export interface AutoCampaignPlanEntryBase {
   // library pick, so the seller can switch back); ignored by the sender if it
   // isn't in that folder.
   customImageUrl?: string | null;
+  // Seller's own message for this campaign, sent once WhatsApp approves it
+  customMessage?: AutoCampaignCustomMessage | null;
   audienceCount: number; // estimated at planning time; the final list is picked at send time
   estimatedCost: number; // in paise
   status: AutoCampaignPlanEntryStatus;

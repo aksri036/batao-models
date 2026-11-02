@@ -53,7 +53,7 @@ export interface CampaignOfferReward {
 // without changing it: other approved templates depend on its exact wording.
 export function getCampaignOfferMessageString(offer: CampaignOffer): string {
   if (offer.benefit.type === BenefitType.POINTS) {
-    if (offer.reward) return `a free ${offer.reward.name}`;
+    if (offer.reward) return `a free ${offer.reward.name.replace(/^\s*free\s+/i, "")}`;
     return `${(offer.benefit.value as PointsValue).points} bonus points`;
   }
   let text = getBenefitMessageString(offer.benefit);
