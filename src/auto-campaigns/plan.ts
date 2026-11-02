@@ -48,6 +48,11 @@ export interface AutoCampaignPlanEntryBase {
     url: string;
     imageId?: string | null; // AutoCampaignImage id for library images; seller photos have only a url
   } | null;
+  // Seller's own photo for this campaign, uploaded to
+  // stores/{storeId}/auto-campaigns/. Sent instead of `image` (which stays the
+  // library pick, so the seller can switch back); ignored by the sender if it
+  // isn't in that folder.
+  customImageUrl?: string | null;
   audienceCount: number; // estimated at planning time; the final list is picked at send time
   estimatedCost: number; // in paise
   status: AutoCampaignPlanEntryStatus;
