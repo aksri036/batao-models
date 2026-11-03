@@ -156,6 +156,10 @@ export interface SalesLead {
   lastNote?: string;
 
   importBatchId?: string;
+  // Set when the lead was migrated with pipeline data (stage/owner) rather
+  // than imported fresh into the pool. Imported stages are not stage moves:
+  // they are left out of activity metrics, the funnel and learning stats.
+  importedAs?: { stage: SalesStage; owner: SalesPerson | null };
   createdAt: Date;
   createdById: string;
   createdByName?: string;
@@ -229,6 +233,7 @@ export interface SalesImportBatch {
   inserted: number;
   duplicates: number;
   invalid: number;
+  assigned?: number; // leads imported with an owner (migration)
 }
 
 // Sales working hours, India time.
