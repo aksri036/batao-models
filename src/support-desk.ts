@@ -10,6 +10,7 @@
 //   admin-data/support-desk/config/scheduler      SupportDeskConfig (managers edit)
 //   admin-data/support-desk/config-history/{id}   every saved config
 import { SalesPerson } from "./sales-desk";
+import { addWorkDays, istDate, istParts, snapToWorking, WorkHours } from "./desk-time";
 
 // ------------------------------------------------------------- accounts
 
@@ -140,8 +141,14 @@ export interface SupportTask {
   expectedMin?: number;
   readyAt?: Date | null; // became actionable (unblocked / created)
 
+  // Recurring work: which job and which cycle (1, 2, …)
+  job?: RecurringJob;
+  cycleNo?: number;
+
   // Steps that wait on the customer (logo, access, approvals…)
   customerStep?: boolean;
+  approval?: boolean; // a recurring-work approval: no response after N days ends the cycle
+  firstAskAt?: Date | null;
   chaseCount: number; // asks sent, including the first request
   lastChaseAt?: Date | null;
   escalatedAt?: Date | null;
@@ -389,6 +396,251 @@ export function missingOnboardingSteps(a: OnboardingInput, existingKeys: string[
   return onboardingSteps(a).filter((s) => !have.has(s.key));
 }
 
+// ------------------------------------------------------- recurring work
+
+export type RecurringJob = "campaign" | "gbp_report" | "blog";
+
+export const RECURRING_JOB_LABEL: Record<RecurringJob, string> = {
+  campaign: "WhatsApp campaign",
+  gbp_report: "GBP progress report",
+  blog: "Blog",
+};
+
+export interface RecurringStepDef {
+  key: string;
+  title: string;
+  customerStep: boolean;
+  approval: boolean;
+}
+
+// Steps of one cycle, in order; each waits for the one before it.
+export const RECURRING_STEPS: Record<RecurringJob, RecurringStepDef[]> = {
+  campaign: [
+    { key: "campaign_balance", title: "Check WhatsApp balance", customerStep: false, approval: false },
+    { key: "campaign_prepare", title: "Prepare campaign", customerStep: false, approval: false },
+    { key: "campaign_approval", title: "Campaign approval", customerStep: true, approval: true },
+    { key: "campaign_run", title: "Run campaign", customerStep: false, approval: false },
+    { key: "campaign_report", title: "Campaign report to client", customerStep: false, approval: false },
+  ],
+  gbp_report: [
+    { key: "gbp_report_prepare", title: "Prepare GBP report", customerStep: false, approval: false },
+    { key: "gbp_report_send", title: "Send GBP report", customerStep: false, approval: false },
+  ],
+  blog: [
+    { key: "blog_generate", title: "Generate blog", customerStep: false, approval: false },
+    { key: "blog_approval", title: "Blog approval", customerStep: true, approval: true },
+    { key: "blog_publish", title: "Publish blog", customerStep: false, approval: false },
+  ],
+};
+
+// What the customer is asked for when a step waits on them (chase messages).
+export const CUSTOMER_ITEM_LABEL: Record<string, string> = {
+  campaign_balance: "WhatsApp balance recharge",
+  campaign_approval: "approval for this month's campaign",
+  blog_approval: "approval for the new blog",
+  website_approval: "approval for the website",
+};
+
+// Which recurring jobs an account gets.
+export function jobsForAccount(a: Pick<CustomerAccount, "plan" | "blogsOn">): RecurringJob[] {
+  const jobs: RecurringJob[] = [];
+  if (a.plan !== "seo") jobs.push("campaign");
+  if (a.plan !== "loyalty") jobs.push("gbp_report");
+  if (a.blogsOn) jobs.push("blog");
+  return jobs;
+}
+
+export function jobEveryDays(job: RecurringJob, cfg: Pick<SupportDeskConfig, "recurringEveryDays">): number {
+  return job === "campaign" ? cfg.recurringEveryDays.campaign : job === "gbp_report" ? cfg.recurringEveryDays.gbpReport : cfg.recurringEveryDays.blog;
+}
+
+// When an account goes Live: the first campaign and blog start right away;
+// the first GBP report comes one interval later (it reports progress).
+export function firstCycleStart(job: RecurringJob, liveAt: Date, cfg: SupportDeskConfig, h: WorkHours): Date {
+  if (job === "gbp_report") return snapToWorking(new Date(liveAt.getTime() + jobEveryDays(job, cfg) * 86_400_000), h);
+  return snapToWorking(liveAt, h);
+}
+
+// The next cycle starts N days after the last one finished (done or no response).
+export function nextCycleStart(job: RecurringJob, finishedAt: Date, cfg: SupportDeskConfig, h: WorkHours): Date {
+  return snapToWorking(new Date(finishedAt.getTime() + jobEveryDays(job, cfg) * 86_400_000), h);
+}
+
+// ---------------------------------------------------- recurring tickets
+
+function startOfWorkDay(d: Date, h: WorkHours): Date {
+  const p = istParts(d);
+  return istDate(p.year, p.month, p.day, h.startHour);
+}
+
+function addMonthsOnDay(d: Date, months: number, monthDay: number, h: WorkHours): Date {
+  const p = istParts(d);
+  const y = p.year + Math.floor((p.month + months) / 12);
+  const m = (p.month + months) % 12;
+  const last = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  return istDate(y, m, Math.min(monthDay, last), h.startHour);
+}
+
+const DAY = 86_400_000;
+
+// The first start on or after `from` that matches the series rule (fixed
+// schedule), anchored at startsOn. Moved into working hours.
+export function seriesStartOnOrAfter(series: Pick<SupportTicketSeries, "every" | "unit" | "weekdays" | "monthDay" | "startsOn">, from: Date, h: WorkHours): Date {
+  const every = Math.max(1, series.every);
+  const anchor = startOfWorkDay(series.startsOn, h);
+  const target = from;
+  if (series.unit === "days") {
+    let t = anchor;
+    if (target > t) t = new Date(t.getTime() + Math.ceil((startOfWorkDay(target, h).getTime() - t.getTime()) / (every * DAY)) * every * DAY);
+    return snapToWorking(t, h);
+  }
+  if (series.unit === "weeks") {
+    const days = series.weekdays?.length ? series.weekdays : [istParts(anchor).weekday];
+    const anchorWeekStart = anchor.getTime() - istParts(anchor).weekday * DAY;
+    let t = startOfWorkDay(target > anchor ? target : anchor, h);
+    for (let i = 0; i < 7 * every * 2 + 7; i++) {
+      const weekIndex = Math.floor((t.getTime() - anchorWeekStart) / (7 * DAY));
+      if (t >= anchor && weekIndex % every === 0 && days.includes(istParts(t).weekday)) return snapToWorking(t, h);
+      t = new Date(t.getTime() + DAY);
+    }
+    return snapToWorking(t, h);
+  }
+  // months
+  const monthDay = series.monthDay ?? istParts(anchor).day;
+  let k = 0;
+  let t = addMonthsOnDay(anchor, 0, monthDay, h);
+  while (t < anchor || t < startOfWorkDay(target, h)) {
+    k += every;
+    t = addMonthsOnDay(anchor, k, monthDay, h);
+  }
+  return snapToWorking(t, h);
+}
+
+// Next start for a series after an occurrence started at `prevStart`
+// (fixed schedule) or was closed at `closedAt` (after last closed).
+export function nextSeriesStart(
+  series: Pick<SupportTicketSeries, "every" | "unit" | "weekdays" | "monthDay" | "startsOn" | "countFrom">,
+  ref: Date,
+  h: WorkHours,
+): Date {
+  if (series.countFrom === "schedule") {
+    return seriesStartOnOrAfter(series, new Date(startOfWorkDay(ref, h).getTime() + DAY), h);
+  }
+  const every = Math.max(1, series.every);
+  if (series.unit === "days") return snapToWorking(startOfWorkDay(new Date(ref.getTime() + every * DAY), h), h);
+  if (series.unit === "weeks") {
+    const base = startOfWorkDay(new Date(ref.getTime() + every * 7 * DAY), h);
+    const days = series.weekdays ?? [];
+    let t = base;
+    for (let i = 0; i < 7 && days.length && !days.includes(istParts(t).weekday); i++) t = new Date(t.getTime() + DAY);
+    return snapToWorking(t, h);
+  }
+  return snapToWorking(addMonthsOnDay(ref, every, series.monthDay ?? istParts(ref).day, h), h);
+}
+
+// Whether the series still has occurrences to create after `occurrences`
+// have been made and the next would start at `nextStart`.
+export function seriesContinues(series: Pick<SupportTicketSeries, "endsAfter" | "endsOn">, occurrences: number, nextStart: Date): boolean {
+  if (series.endsAfter && occurrences >= series.endsAfter) return false;
+  if (series.endsOn && nextStart.getTime() > series.endsOn.getTime() + DAY - 1) return false;
+  return true;
+}
+
+export function occurrenceDueAt(start: Date, dueAfterWorkingDays: number, h: WorkHours): Date {
+  return dueAfterWorkingDays > 0 ? addWorkDays(start, dueAfterWorkingDays, h) : start;
+}
+
+export function supportWorkHours(cfg: Pick<SupportDeskConfig, "workStartHour" | "workEndHour" | "workDays">): WorkHours {
+  return { startHour: cfg.workStartHour, endHour: cfg.workEndHour, days: cfg.workDays };
+}
+
+// ------------------------------------------------- task builders (shared)
+
+type By = { id: string; name?: string };
+
+// One recurring cycle's tasks. `ids` are pre-allocated doc ids (one per
+// step) so each step can depend on the previous one. The first step is To do
+// from `startAt`; the rest are Blocked until the step before is finished.
+export function cycleTasks(
+  account: Pick<CustomerAccount, "id" | "name" | "ownerId" | "ownerName">,
+  job: RecurringJob,
+  cycleNo: number,
+  startAt: Date,
+  ids: string[],
+  by: By,
+  cfg: SupportDeskConfig,
+  now: Date,
+): Omit<SupportTask, "id">[] {
+  const steps = RECURRING_STEPS[job];
+  return steps.map((st, i) => ({
+    accountId: account.id,
+    accountName: account.name,
+    kind: "recurring",
+    templateKey: st.key,
+    title: st.title,
+    workflowId: `${account.id}-${job}-${cycleNo}`,
+    dependsOn: i === 0 ? [] : [ids[i - 1]],
+    status: i === 0 ? "todo" : "blocked",
+    open: true,
+    ownerId: account.ownerId ?? null,
+    ownerName: account.ownerName ?? null,
+    startAt: i === 0 ? startAt : null,
+    expectedMin: cfg.expectedMin[st.key],
+    readyAt: i === 0 ? startAt : null,
+    job,
+    cycleNo,
+    customerStep: st.customerStep,
+    approval: st.approval,
+    chaseCount: 0,
+    createdAt: now,
+    createdById: by.id,
+    createdByName: by.name,
+  }));
+}
+
+export function isLastCycleStep(task: Pick<SupportTask, "job" | "templateKey">): boolean {
+  if (!task.job) return false;
+  const steps = RECURRING_STEPS[task.job];
+  return steps[steps.length - 1].key === task.templateKey;
+}
+
+// One occurrence of a recurring ticket.
+export function occurrenceTask(
+  series: SupportTicketSeries,
+  start: Date,
+  occurrenceNo: number,
+  h: WorkHours,
+  now: Date,
+): Omit<SupportTask, "id"> {
+  return {
+    accountId: series.accountId,
+    accountName: series.accountName,
+    kind: "ticket",
+    templateKey: "ticket",
+    title: series.title,
+    dependsOn: [],
+    status: "todo",
+    open: true,
+    ownerId: series.ownerId,
+    ownerName: series.ownerName ?? null,
+    startAt: start,
+    dueAt: occurrenceDueAt(start, series.dueAfterWorkingDays, h),
+    readyAt: start,
+    chaseCount: 0,
+    category: series.category,
+    priority: series.priority,
+    description: series.description,
+    raisedById: series.createdById,
+    raisedByName: series.createdByName,
+    seriesId: series.id,
+    occurrenceNo,
+    missedCount: 0,
+    createdAt: now,
+    createdById: series.createdById,
+    createdByName: series.createdByName,
+  };
+}
+
 // ---------------------------------------------------------------- defaults
 
 export const DEFAULT_SUPPORT_DESK_CONFIG: SupportDeskConfig = {
@@ -422,6 +674,14 @@ export const DEFAULT_SUPPORT_DESK_CONFIG: SupportDeskConfig = {
     training: 45,
     chase: 5,
     ticket: 20,
+    campaign_balance: 5,
+    campaign_prepare: 30,
+    campaign_run: 10,
+    campaign_report: 20,
+    gbp_report_prepare: 30,
+    gbp_report_send: 5,
+    blog_generate: 30,
+    blog_publish: 10,
   },
   messageTemplates: {
     request: "Hi {contact}, to set up {account} on Batao we need your {item}. Could you please share it here?",
