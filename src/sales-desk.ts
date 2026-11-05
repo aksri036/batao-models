@@ -108,7 +108,9 @@ export const SALES_NEXT_ACTION_LABEL: Record<SalesNextActionType, string> = {
 
 export interface SalesNextAction {
   type: SalesNextActionType;
-  dueAt: Date;
+  // null = imported without a date: shown as to-do now, never overdue, and
+  // given a real date the next time the salesperson logs the lead.
+  dueAt: Date | null;
   // Fixed time (a demo, "call me at 4") vs flexible (any time after dueAt).
   fixedTime: boolean;
   note?: string;
@@ -133,7 +135,12 @@ export interface SalesLead {
   city?: string;
   area?: string;
   source?: string;
+  email?: string;
   pos?: string;
+  // Seats as a range, the way leads give it: "25-50" → 25..50, "100+" → 100..null,
+  // "40" → 40..40. Older leads may only have `seats` (an exact number).
+  seatsMin?: number;
+  seatsMax?: number | null;
   seats?: number;
 
   stage: SalesStage;
@@ -165,7 +172,7 @@ export interface SalesLead {
   createdByName?: string;
 }
 
-export type SalesActivityType = "call" | "demo" | "note" | "stage_change" | "next_action" | "assigned";
+export type SalesActivityType = "call" | "demo" | "note" | "stage_change" | "next_action" | "assigned" | "details_changed";
 
 export type SalesAssignReason = "claimed" | "reassigned" | "returned_to_pool";
 
@@ -182,7 +189,9 @@ export interface SalesLearningContext {
   stageAtTime: SalesStage;
   leadAgeDays: number;
   pos?: string;
-  seats?: number;
+  seats?: number; // legacy exact seats
+  seatsMin?: number;
+  seatsMax?: number | null;
   wasScheduled: boolean; // the lead had a next action due at or before now
   dueLagMin?: number; // minutes after (positive) the next action's due time
   origin?: SalesActionOrigin;
@@ -215,6 +224,8 @@ export interface SalesActivity {
   nextActionFrom?: SalesNextAction | null;
   nextActionTo?: SalesNextAction | null;
 
+  fields?: string[]; // details_changed: which lead fields were edited
+
   assignFrom?: SalesPerson | null;
   assignTo?: SalesPerson | null;
   assignReason?: SalesAssignReason;
@@ -234,6 +245,47 @@ export interface SalesImportBatch {
   duplicates: number;
   invalid: number;
   assigned?: number; // leads imported with an owner (migration)
+}
+
+// ------------------------------------------------------------- seats
+
+export interface SeatRange {
+  min: number;
+  max: number | null; // null = open-ended ("100+")
+}
+
+export function leadSeatRange(lead: Pick<SalesLead, "seatsMin" | "seatsMax" | "seats">): SeatRange | null {
+  if (lead.seatsMin !== undefined && lead.seatsMin !== null) return { min: lead.seatsMin, max: lead.seatsMax ?? null };
+  if (lead.seats) return { min: lead.seats, max: lead.seats };
+  return null;
+}
+
+// "25–50 seats", "100+ seats", "40 seats".
+export function formatSeatRange(r: SeatRange | null): string | null {
+  if (!r) return null;
+  if (r.max === null) return `${r.min}+ seats`;
+  if (r.max === r.min) return `${r.min} seats`;
+  return `${r.min}–${r.max} seats`;
+}
+
+// The range reaches the threshold (a "25–50" lead counts for a 40-seat rule).
+export function seatsReach(r: SeatRange | null, threshold: number): boolean {
+  if (!r) return false;
+  return r.max === null || r.max >= threshold;
+}
+
+// ---------------------------------------------------------------- POS
+
+// One name per POS however it's typed: every "Pet Pooja" / "petpuja" /
+// "Petpoja" / "PetPooja" variant is "Petpooja". Others are kept as typed
+// (trimmed); empty → undefined.
+export function normalizePos(raw: string | undefined | null): string | undefined {
+  const t = (raw ?? "").trim();
+  if (!t) return undefined;
+  const squashed = t.toLowerCase().replace(/[^a-z]/g, "");
+  // Any spelling that's clearly Petpooja: "pooj…" anywhere, or pet/per/prt + puja/poja.
+  if (squashed.includes("pooj") || /p[a-z]?t*p[ou]j/.test(squashed)) return "Petpooja";
+  return t;
 }
 
 // Sales working hours, India time.
