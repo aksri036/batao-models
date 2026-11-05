@@ -140,6 +140,10 @@ export interface SupportTask {
   fixedTime?: boolean; // a meeting at dueAt
   expectedMin?: number;
   readyAt?: Date | null; // became actionable (unblocked / created)
+  // When unblocked, start this many days after the step before finished
+  // (renewal reminders are spaced this way).
+  startAfterDays?: number;
+  renewalEndsAt?: Date | null; // renewal tasks: the subscription end date
 
   // Recurring work: which job and which cycle (1, 2, …)
   job?: RecurringJob;
@@ -225,7 +229,25 @@ export interface CustomerPayment {
   ownerId: string; // the account's "Sold by" rep
   ownerName?: string;
   notes?: string;
+  open: boolean; // denormalized: amountReceived < amountDue
   createdAt: Date;
+  createdById?: string;
+  createdByName?: string;
+}
+
+export const CUSTOMER_PAYMENT_KIND_LABEL: Record<CustomerPaymentKind, string> = {
+  setup: "Setup fee",
+  recurring: "Subscription",
+  renewal: "Renewal",
+};
+
+export type PaymentStatus = "pending" | "partial" | "overdue" | "paid";
+
+export function paymentStatus(p: Pick<CustomerPayment, "amountDue" | "amountReceived" | "dueDate">, now = new Date()): PaymentStatus {
+  if (p.amountReceived >= p.amountDue) return "paid";
+  if (p.dueDate.getTime() < now.getTime()) return "overdue";
+  if (p.amountReceived > 0) return "partial";
+  return "pending";
 }
 
 // ------------------------------------------------------------- timeline
@@ -554,6 +576,82 @@ export function supportWorkHours(cfg: Pick<SupportDeskConfig, "workStartHour" | 
   return { startHour: cfg.workStartHour, endHour: cfg.workEndHour, days: cfg.workDays };
 }
 
+// --------------------------------------------------------------- renewals
+
+export type RenewalOutcome = "renewed" | "upgraded" | "downgraded" | "ended";
+
+export const RENEWAL_OUTCOME_LABEL: Record<RenewalOutcome, string> = {
+  renewed: "Renewed",
+  upgraded: "Upgraded",
+  downgraded: "Downgraded",
+  ended: "Ended",
+};
+
+export type ChurnReason = "price" | "no_value" | "competitor" | "closed_business" | "unresponsive" | "other";
+
+export const CHURN_REASON_LABEL: Record<ChurnReason, string> = {
+  price: "Price",
+  no_value: "Didn't see value",
+  competitor: "Moved to a competitor",
+  closed_business: "Business closed",
+  unresponsive: "Stopped responding",
+  other: "Other",
+};
+
+export const RENEWAL_REMINDERS = 5;
+
+export function renewalWorkflowId(accountId: string, endsAt: Date): string {
+  const p = istParts(endsAt);
+  return `${accountId}-renewal-${p.year}${String(p.month + 1).padStart(2, "0")}${String(p.day).padStart(2, "0")}`;
+}
+
+// The day the renewal conversation starts for a subscription ending at endsAt.
+export function renewalStartsAt(endsAt: Date, cycle: CustomerBillingCycle, cfg: Pick<SupportDeskConfig, "renewalLeadDays">): Date {
+  return new Date(endsAt.getTime() - cfg.renewalLeadDays[cycle] * 86_400_000);
+}
+
+// Report → send → meeting → reminders 1–5 (each N days after the one
+// before) → decision. Only the decision step allows ending the subscription.
+export function renewalTasks(
+  account: Pick<CustomerAccount, "id" | "name" | "ownerId" | "ownerName" | "billingCycle">,
+  endsAt: Date,
+  ids: string[],
+  by: { id: string; name?: string },
+  cfg: SupportDeskConfig,
+  now: Date,
+): Omit<SupportTask, "id">[] {
+  const gap = cfg.renewalReminderGapDays[account.billingCycle];
+  const steps: { key: string; title: string; after?: number }[] = [
+    { key: "renewal_report", title: "Prepare renewal report" },
+    { key: "renewal_send", title: "Send renewal report" },
+    { key: "renewal_meeting", title: "Renewal meeting" },
+    ...Array.from({ length: RENEWAL_REMINDERS }, (_, i) => ({ key: `renewal_reminder_${i + 1}`, title: `Renewal reminder ${i + 1}`, after: gap })),
+    { key: "renewal_decision", title: "Renewal decision", after: gap },
+  ];
+  return steps.map((st, i) => ({
+    accountId: account.id,
+    accountName: account.name,
+    kind: "renewal",
+    templateKey: st.key,
+    title: st.title,
+    workflowId: renewalWorkflowId(account.id, endsAt),
+    dependsOn: i === 0 ? [] : [ids[i - 1]],
+    status: i === 0 ? "todo" : "blocked",
+    open: true,
+    ownerId: account.ownerId ?? null,
+    ownerName: account.ownerName ?? null,
+    startAt: i === 0 ? now : null,
+    readyAt: i === 0 ? now : null,
+    startAfterDays: st.after,
+    renewalEndsAt: endsAt,
+    expectedMin: cfg.expectedMin[st.key.startsWith("renewal_reminder") ? "renewal_reminder" : st.key],
+    chaseCount: 0,
+    createdAt: now,
+    createdById: by.id,
+    createdByName: by.name,
+  }));
+}
+
 // ------------------------------------------------- task builders (shared)
 
 type By = { id: string; name?: string };
@@ -682,10 +780,17 @@ export const DEFAULT_SUPPORT_DESK_CONFIG: SupportDeskConfig = {
     gbp_report_send: 5,
     blog_generate: 30,
     blog_publish: 10,
+    renewal_report: 30,
+    renewal_send: 5,
+    renewal_meeting: 30,
+    renewal_reminder: 5,
+    renewal_decision: 10,
   },
   messageTemplates: {
     request: "Hi {contact}, to set up {account} on Batao we need your {item}. Could you please share it here?",
     chase: "Hi {contact}, a gentle reminder to share the {item} for {account} so we can continue your setup.",
     general: "Hi {contact}, ",
+    renewal_reminder: "Hi {contact}, a reminder that the Batao subscription for {account} ends on {endDate}. Shall we go ahead with the renewal?",
+    renewal_report: "Hi {contact}, sharing the Batao results for {account} ahead of your renewal on {endDate}.",
   },
 };
