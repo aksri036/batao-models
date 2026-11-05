@@ -121,6 +121,40 @@ export interface SalesNextAction {
   setAt: Date;
 }
 
+export type SalesDealPlan = "loyalty" | "seo" | "combined";
+
+export const SALES_DEAL_PLAN_LABEL: Record<SalesDealPlan, string> = {
+  loyalty: "Loyalty",
+  seo: "SEO",
+  combined: "Combined",
+};
+
+export type SalesBillingCycle = "monthly" | "quarterly" | "half_yearly" | "annual";
+
+export const SALES_BILLING_LABEL: Record<SalesBillingCycle, string> = {
+  monthly: "Monthly",
+  quarterly: "Quarterly",
+  half_yearly: "Half-yearly",
+  annual: "Annual",
+};
+
+const CYCLES_PER_YEAR: Record<SalesBillingCycle, number> = { monthly: 12, quarterly: 4, half_yearly: 2, annual: 1 };
+
+export interface SalesDeal {
+  plan: SalesDealPlan;
+  billingCycle: SalesBillingCycle;
+  amount: number; // ₹ per billing cycle
+  expected: boolean; // true = expected (negotiation), false = won
+  setAt: Date;
+  setById: string;
+  setByName?: string;
+}
+
+// ₹ per year for a deal.
+export function dealAnnualValue(d: Pick<SalesDeal, "amount" | "billingCycle">): number {
+  return d.amount * CYCLES_PER_YEAR[d.billingCycle];
+}
+
 export interface SalesPerson {
   id: string; // admin phone, E.164
   name?: string;
@@ -154,6 +188,9 @@ export interface SalesLead {
   assignedAt?: Date;
 
   nextAction: SalesNextAction | null;
+
+  // Expected deal (set at Negotiation, optional) / actual deal (required at Won).
+  deal?: SalesDeal;
 
   unansweredStreak: number; // no answer / busy calls in a row
   totalCalls: number;
@@ -194,6 +231,7 @@ export interface SalesLearningContext {
   seatsMax?: number | null;
   wasScheduled: boolean; // the lead had a next action due at or before now
   dueLagMin?: number; // minutes after (positive) the next action's due time
+  dueFixed?: boolean; // that next action was fixed-time (callback / demo)
   origin?: SalesActionOrigin;
   recommendedRank?: number; // 1 = the Next up card
   score?: number;
@@ -225,6 +263,7 @@ export interface SalesActivity {
   nextActionTo?: SalesNextAction | null;
 
   fields?: string[]; // details_changed: which lead fields were edited
+  deal?: SalesDeal; // set when this action recorded or changed the deal
 
   assignFrom?: SalesPerson | null;
   assignTo?: SalesPerson | null;
@@ -304,6 +343,11 @@ export interface SalesDeskConfig {
   seatThreshold: number; // seats ≥ this earns the fit bonus
   attemptPenalty: number; // per unanswered call in a row
   maxUnanswered: number; // after this many, suggest Lost: unreachable for review
+  // Manager targets (Performance view), team-wide with optional per-rep overrides.
+  targets?: SalesTargets;
+  targetsByRep?: Record<string, Partial<SalesTargets>>;
+  // Days allowed in a stage before an open deal counts as stuck.
+  stuckDays?: { pitch: number; demo: number; negotiation: number };
   durationsMin: { pitch: number; demo: number; negotiation: number; close: number; wrapUp: number };
   cadence: {
     retryHours: number; // no answer / busy
@@ -317,6 +361,15 @@ export interface SalesDeskConfig {
   updatedByName?: string;
 }
 
+export interface SalesTargets {
+  callsPerDay: number;
+  demosPerWeek: number;
+  winsPerMonth: number;
+}
+
+export const DEFAULT_SALES_TARGETS: SalesTargets = { callsPerDay: 40, demosPerWeek: 5, winsPerMonth: 4 };
+export const DEFAULT_STUCK_DAYS = { pitch: 14, demo: 10, negotiation: 14 };
+
 export const DEFAULT_SALES_DESK_CONFIG: SalesDeskConfig = {
   stageWeight: { new: 10, pitch: 20, demo: 40, negotiation: 60 },
   overduePerHour: 2,
@@ -328,6 +381,9 @@ export const DEFAULT_SALES_DESK_CONFIG: SalesDeskConfig = {
   seatThreshold: 40,
   attemptPenalty: 4,
   maxUnanswered: 6,
+  targets: DEFAULT_SALES_TARGETS,
+  targetsByRep: {},
+  stuckDays: DEFAULT_STUCK_DAYS,
   durationsMin: { pitch: 7, demo: 30, negotiation: 10, close: 2, wrapUp: 3 },
   cadence: {
     retryHours: 3,
