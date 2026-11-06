@@ -96,8 +96,102 @@ export function seoReportDefaultAvgBill(priceLevel?: number): number {
 // Max ticked keywords: the search table must fit on page 1 of the PDF.
 export const SEO_REPORT_MAX_INCLUDED_KEYWORDS = 8;
 
+// ─── Chains ─────────────────────────────────────────────────────────────────
+// A chain report checks one search phrase ("best cafe near <area>") for each
+// outlet's own area and one next area. Single reports leave these unset.
+
+export type SeoReportKind = "single" | "chain";
+
+export interface SeoReportOutlet {
+  place: SeoReportPlace;
+  label: string; // area name shown for the outlet, "Koramangala"
+  street: string; // street / mall line, "80 Feet Road"
+  ownArea: SeoReportArea; // searched around the outlet itself
+  nextArea?: SeoReportArea;
+  nextAreaOptions: SeoReportArea[]; // nearby areas found for this outlet
+  competitorPlaceId?: string; // admin's pick; default = nearest place ranking above the outlet
+}
+
+export interface SeoReportChain {
+  brand: string; // "Big Bean Cafe"
+  outletWord: string; // "cafe" → "7 cafes", "Cafe by cafe", "YOUR CAFE"
+  phrase: string; // "best cafe"; searched as "best cafe near <area>"
+  trialMonths: number; // the offer: "Start your 3-month trial"
+}
+
+export const SEO_REPORT_MAX_OUTLETS = 8; // outlet table must fit on page 1
+export const SEO_REPORT_CHAIN_BIAS_RADIUS_METERS = 2000;
+export const SEO_REPORT_OUTLET_WORDS = ["cafe", "restaurant", "outlet", "bakery", "kitchen"];
+
+export function seoReportChainQuery(phrase: string, area: string): string {
+  return `${phrase.trim()} near ${area.trim()}`;
+}
+
+// A chain search is per outlet (its rank is what's recorded), so the key
+// carries the outlet as well as the query; changing the phrase or the area
+// gives a new key and so a new search.
+export function seoReportChainCellKey(outletPlaceId: string, phrase: string, area: string): string {
+  return `${outletPlaceId}|${seoReportCellKey(seoReportChainQuery(phrase, area), area)}`;
+}
+
+export function seoReportDistanceKm(a: ReportLatLng, b: ReportLatLng): number {
+  const m = 111_320;
+  const dLat = (a.lat - b.lat) * m;
+  const dLng = (a.lng - b.lng) * m * Math.cos((((a.lat + b.lat) / 2) * Math.PI) / 180);
+  return Math.hypot(dLat, dLng) / 1000;
+}
+
+// A place Google ranks above an outlet, in its own or its next area.
+export interface ChainCompetitorCandidate {
+  placeId: string;
+  name: string;
+  km?: number; // from the outlet
+  ranks: { area: string; rank: number }[];
+}
+
+// Everyone ranked above the outlet in its two searches (other outlets of the
+// same chain excluded), nearest first. Nearest is the default competitor:
+// in the sample, The Kind Roastery is #4 but right next door, so it's the
+// one an Indiranagar owner recognises.
+export function seoReportChainCandidates(
+  outlet: SeoReportOutlet,
+  cells: Record<string, SeoReportCell>,
+  phrase: string,
+  chainPlaceIds: Set<string>,
+): ChainCompetitorCandidate[] {
+  const byId = new Map<string, ChainCompetitorCandidate>();
+  for (const area of [outlet.ownArea, outlet.nextArea]) {
+    if (!area) continue;
+    const cell = cells[seoReportChainCellKey(outlet.place.placeId, phrase, area.name)];
+    if (!cell) continue;
+    const above = cell.rank === null ? cell.results : cell.results.slice(0, cell.rank - 1);
+    above.forEach((r, i) => {
+      if (chainPlaceIds.has(r.placeId)) return;
+      const c = byId.get(r.placeId) ?? {
+        placeId: r.placeId,
+        name: r.name,
+        km: r.location ? seoReportDistanceKm(outlet.place.location, r.location) : undefined,
+        ranks: [],
+      };
+      c.ranks.push({ area: area.name, rank: i + 1 });
+      byId.set(r.placeId, c);
+    });
+  }
+  return [...byId.values()].sort((a, b) => (a.km ?? 1e9) - (b.km ?? 1e9));
+}
+
+export function seoReportChainCompetitor(
+  outlet: SeoReportOutlet,
+  candidates: ChainCompetitorCandidate[],
+): ChainCompetitorCandidate | undefined {
+  return candidates.find((c) => c.placeId === outlet.competitorPlaceId) ?? candidates[0];
+}
+
 export interface SeoReport {
   id: string;
+  kind?: SeoReportKind; // default "single"
+  chain?: SeoReportChain;
+  outlets?: SeoReportOutlet[];
   restaurant: SeoReportPlace | null;
   landmark: string; // building or landmark shown in the report ("Sandy's Tower")
   city: string;
@@ -141,22 +235,39 @@ export interface AuditCompetitor {
   name: string;
   distance: string; // "400 m", "2.7 km"
   winsFor: string;
+  outlet?: string; // chain: which of the chain's outlets it's near
+}
+
+// Chain report, table 01: one row per outlet, its own area and one next area.
+export interface AuditOutletRow {
+  label: string; // "Koramangala"
+  street: string; // "80 Feet Road"
+  own: AuditSearchResult;
+  next?: { area: string; distance: string; result: AuditSearchResult };
 }
 
 export interface VisibilityAuditReport {
+  kind?: SeoReportKind; // default "single"
   restaurant: { name: string; landmark: string; city: string };
   areas: string[];
   capturedOn: Date;
   headline: string;
+  subline?: string; // replaces the computed title subline (chain: "7 cafes · Bengaluru · …")
   scorecard: AuditStatTile[];
   searches: AuditSearchRow[];
+  outlets?: AuditOutletRow[]; // chain: replaces the search table
+  outletWord?: string; // chain: "cafe"
   observation: { title: string; body: string };
+  // query is the full phrase to type; area is appended as "near <area>" when set.
   checkItYourself: { query: string; area: string; shownInstead: string };
-  competitors: AuditCompetitor[];
+  competitors: AuditCompetitor[]; // chain rows also carry `outlet`
   costs: AuditStatTile[];
   clientBrands: string[];
   benefits: { lead: string; text: string }[];
+  fixableTitle?: string; // section 04 title; default "All of this is fixable"
   closingLine: string;
+  closingTail?: string; // chain: bold sentence after the green closing line
+  ctaTitle?: string; // default "Want <city> to find <name>? Talk to Batao.ai"
   contact: { phone: string; email: string; website: string };
 }
 
@@ -164,6 +275,7 @@ export interface VisibilityAuditReport {
 
 export interface SearchReportPlacesRequest {
   query: string;
+  limit?: number; // results, default 8; up to 20 when picking a chain's outlets
 }
 
 export interface SearchReportPlacesResult {
