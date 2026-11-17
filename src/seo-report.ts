@@ -121,7 +121,7 @@ export interface SeoReportChain {
 
 export const SEO_REPORT_MAX_OUTLETS = 8; // outlet table must fit on page 1
 export const SEO_REPORT_CHAIN_BIAS_RADIUS_METERS = 2000;
-export const SEO_REPORT_OUTLET_WORDS = ["cafe", "restaurant", "outlet", "bakery", "kitchen"];
+export const SEO_REPORT_OUTLET_WORDS = ["cafe", "restaurant", "restobar", "outlet", "bakery", "kitchen"];
 
 export function seoReportChainQuery(phrase: string, area: string): string {
   return `${phrase.trim()} near ${area.trim()}`;
