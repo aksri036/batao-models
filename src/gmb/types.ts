@@ -231,6 +231,15 @@ export interface SeoSettings {
   postAutomationEnabled?: boolean;
   // Weekly posting cadence. Default 2, minimum 2.
   postsPerWeek?: number;
+
+  // ── Automation health (written by the backend) ────────────────────────────
+  // Set when Google answers 404/403 for this location (our account lost
+  // manager access, or the listing was moved/deleted). Polling continues and
+  // the field is removed once a call succeeds again.
+  accessLost?: { at: Timestamp; status?: number };
+  // Set when Google rejects OFFER posts for this location ("Creating Offer and
+  // Product posts is not enabled"). Automated posts then use STANDARD.
+  offerPostsUnsupported?: boolean;
 }
 
 // ── Post automation (automated GBP posting pipeline) ──────────────────────────
@@ -300,6 +309,10 @@ export interface MediaBankItem {
   // Saved SEO keywords this photo suits — lets keyword-mode posts attach it.
   // Only dish/ambience/other (offer/festival posters are time-bound).
   keywords?: string[];
+  // Set when the photo's URL returns 404/410. Post generation skips it; an
+  // admin deletes and re-uploads it.
+  brokenAt?: Timestamp;
+  brokenReason?: string;
 }
 
 // One doc per ISO week (e.g. "2026-W39") so a week's slots are read/written
@@ -338,7 +351,20 @@ export interface PostAutomationIssue {
   // `detail` message alone (often just "Internal error encountered.") gives
   // no actionable detail.
   rawError?: string;
+
+  // ── Resolution (admin Failures view: retry / dismiss) ─────────────────────
+  // Set once the issue is closed. "retry-failed" means the retry recorded a
+  // new issue for the same slot.
+  resolvedAt?: Timestamp;
+  resolution?: PostIssueResolution;
+  resolvedBy?: string | null; // admin phone
+  // Lock against a double-clicked retry posting twice (cleared if skipped)
+  retryStartedAt?: Timestamp;
+  retryError?: string;
+  retryPostName?: string; // GMB post name created by a successful retry
 }
+
+export type PostIssueResolution = "retried" | "retry-failed" | "dismissed" | "already-posted";
 
 // ── Review classification (automated response pipeline) ──────────────────────
 
@@ -500,6 +526,10 @@ export interface ReplyQueueItem {
   // Computed once at first publish: (publishedAt - createTime) in minutes.
   // Not recomputed on later edits.
   responseTimeMinutes?: number;
+  // A "failed" item an admin dismissed in the Failures view. Status stays
+  // "failed"; only the cross-location Failures list hides it.
+  dismissedAt?: Timestamp;
+  dismissedBy?: string | null; // admin phone
 }
 
 // Who/what performed an activity — admin (by phone, since admin login is

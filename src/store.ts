@@ -3,6 +3,7 @@ import { OrderSettings } from "./order";
 import { BtSubscription } from "./billing/billing";
 import { StoreStaffRewardsSettings } from "./staff";
 import { WASettings } from "./wa-settings";
+import { AutoCampaignSettings } from "./auto-campaigns/settings";
 
 export interface Store {
   createdTime: Date;
@@ -36,6 +37,7 @@ export interface Store {
   featureFlags?: StoreFeatureFlags;
   orderSettings?: OrderSettings | null;
   lastOrderNumber?: number;
+  autoCampaignSettings?: AutoCampaignSettings | null;
 }
 
 export interface StoreStats {

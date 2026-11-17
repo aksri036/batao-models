@@ -38,7 +38,16 @@ export interface BtCampaign {
   previouslyRanCampaigns?: string[]; //parent campaigns list, in case it was created by retargeting existing campaign
   offerId?: string; //campaign was created by an offer. Template will get view offer button url.
 
-  campaignType?: "gift" | "ask";
+  // What the campaign gives the guest. Drives side effects, not template
+  // filling (see bodyParams/buttonParams below):
+  //   gift:     pointsGrant is credited to every recipient before sending
+  //   ask:      asks the guest to act (askAction); its template is submitted as MARKETING
+  //   offer:    carries a coupon offer (offerId); guests claim it from the button link
+  //   greeting: a message only, nothing to grant or claim
+  // Only "gift" and "ask" are checked by the backend; other values (and unset,
+  // used by older campaigns) take the default path. Auto campaigns set it too,
+  // alongside autoCampaign.type, which says where the campaign came from.
+  campaignType?: "gift" | "ask" | "offer" | "greeting";
   templateId?: string;
   pointsGrant?: { points: number; expiryDays?: number };
   askAction?: "google_review" | "instagram_tag" | "referral";
@@ -47,6 +56,7 @@ export interface BtCampaign {
   // Send-path counters (set during fan-out)
   total?: number;
   limitedCount?: number;
+  optedOutCount?: number; // recipients left out because they opted out of the store's offers
   scheduledCount?: number;
   sentCount?: number;
   sendFailedCount?: number;
@@ -59,7 +69,38 @@ export interface BtCampaign {
   // Effectiveness — recipients who ordered within the attribution window
   visitsAttributed?: number;
   revenueAttributed?: number;
+
+  // ---------------------------------------------------------------------------
+  // Template values. A campaign may declare how its WhatsApp template's
+  // variables are filled, so any template can be sent without changing the
+  // sender. When these are absent the sender falls back to the older inferred
+  // convention: body {{1}}=guest name, {{2}}=points, {{3}}=store name,
+  // {{4}}=expiry days, and the URL button gets the claim-offer link only when
+  // offerId is set. Existing campaigns don't set them, so they are unaffected.
+  // ---------------------------------------------------------------------------
+  // Values for the template body {{1}}..{{n}}, in order. CAMPAIGN_GUEST_NAME_TOKEN
+  // anywhere in a value is replaced with each recipient's name.
+  bodyParams?: string[] | null;
+  // Values for the template's URL button(s) {{1}}, by button index. Each is the
+  // part of the URL after the template's base (e.g. "spicegarden/dashboard").
+  buttonParams?: string[] | null;
+
+  // Set when the campaign was created by auto campaigns from a monthly plan
+  // entry (it is created with status "approved" and the store's pre-approved
+  // template, so no template is submitted). Used to link the campaign back to
+  // its plan and to keep it out of the manual campaign lists.
+  autoCampaign?: {
+    month: string; // "YYYY-MM" plan the entry belongs to
+    entryId: string; // AutoCampaignPlanEntry id
+    type: string; // AutoCampaignType, e.g. "festival"
+    sendDate: string; // "YYYY-MM-DD" (IST) send day this campaign covers
+  } | null;
 }
+
+// Placeholder in BtCampaign.bodyParams replaced per recipient with the
+// guest's name, or CAMPAIGN_GUEST_NAME_FALLBACK when the name is unknown.
+export const CAMPAIGN_GUEST_NAME_TOKEN = "{{guestName}}";
+export const CAMPAIGN_GUEST_NAME_FALLBACK = "Guest";
 
 export const createEmptyCampaign = (): BtCampaign => ({
   id: "",
@@ -87,7 +128,11 @@ export interface CampaignTargetStatus {
   deliveryError?: string;
   deliveryErrorCode?: number;
   billedAt?: Date;
+  // Send attempts so far. Sends run through a Cloud Tasks queue that retries
+  // WhatsApp rate limits (Meta 130429); while retrying, sendStatus is
+  // "rate_limited". The final attempt sets "sent" or "failed".
   attempts?: number;
+  // Last provider error (Meta code + message), set on failed/rate-limited attempts
   lastError?: { code?: number; message: string };
   lastAttemptAt?: Date;
 }

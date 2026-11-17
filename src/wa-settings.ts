@@ -1,3 +1,5 @@
+import { AutoCampaignTemplateKey } from "./auto-campaigns/templates";
+
 export interface WASettings {
   whitelisted?: boolean;
   phoneNumber?: string;
@@ -9,6 +11,18 @@ export interface WASettings {
   qualityRating?: string; // e.g. "FLAGGED" | "UNFLAGGED" — from phone_number_quality_update webhook
   messagingLimit?: string; // e.g. "TIER_250" | "TIER_1K" | "TIER_10K" | "TIER_100K" | "UNLIMITED"
   qualityUpdatedAt?: Date;
+  // Set (with one alert) when Meta reports the number/token unusable
+  // (codes 190, 10, 200, 131031, or 100 + subcode 33). Removed on the next
+  // successful send.
+  connectionBroken?: {
+    at: Date;
+    code: number | null;
+    subcode: number | null;
+    message: string;
+  };
+  // Set (with one alert) when sends pause because balance < 100 paise;
+  // removed once a send finds the balance above it again.
+  lowBalanceAt?: Date;
 }
 
 export interface WinBackMilestone {
@@ -80,7 +94,8 @@ export interface WAAutoMsgTemplate {
     | "points-v2-redemption-otp"
     | "send-bill"
     | "win-back-redeem"
-    | "win-back-soon";
+    | "win-back-soon"
+    | AutoCampaignTemplateKey;
 
   templateName: string; // WhatsApp template name
   templateId: string; // From AiSensy/Meta
@@ -89,6 +104,7 @@ export interface WAAutoMsgTemplate {
   waTemplateType: string; //"utility" | "marketing "
   storeId: string;
   createdAt: Date;
+  templateVersion?: number; // auto campaign templates: version of the copy it was submitted with
 }
 
 export interface WAComponent {
