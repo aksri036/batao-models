@@ -240,7 +240,16 @@ export interface BlogPost {
   content: string; // HTML or Markdown
   coverImage?: string;
   publishedAt?: string | Date;
+  updatedAt?: string | Date;
   seo?: SeoSettings;
+  // Address of the post: /blogs/{slug}. Posts without one use /blogs/{id}.
+  slug?: string;
+  // Questions and answers shown at the end of the post, also given to
+  // search engines as FAQ data.
+  faq?: Array<{ question: string; answer: string }>;
+  // Set when the post was published from Blog Studio:
+  // seo-settings/{locationId}/blogs/{blogId}.
+  blogStudio?: { locationId: string; blogId: string };
 }
 
 // ---------- Contact ----------

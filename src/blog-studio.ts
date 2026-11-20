@@ -125,6 +125,56 @@ export type BlogPostView = BlogPostMeta &
     publishedAt?: number | null;
   };
 
+// ---------------------------------------------------------------- menus
+
+// A menu PDF uploaded for content (blog posts, GBP posts): what Claude read
+// from it. Kept per location in seo-settings/{locationId}/menus/{menuId}.
+// Separate from the store's Insta Menu (stores/{id}/items), which it never
+// touches.
+export type ContentMenuStatus = "uploaded" | "reading" | "done" | "failed";
+
+export interface ContentMenuItem {
+  name: string;
+  price?: number | null;
+  description?: string | null;
+  veg?: boolean | null;
+}
+
+export interface ContentMenuCategory {
+  name: string;
+  items: ContentMenuItem[];
+}
+
+export interface ContentMenuBase {
+  id: string;
+  locationId: string;
+  fileName: string;
+  storagePath: string;
+  sizeBytes: number;
+  pageCount?: number | null;
+  status: ContentMenuStatus;
+  // While reading: chunks of pages read so far.
+  progress?: { done: number; total: number } | null;
+  error?: string | null;
+  categories: ContentMenuCategory[];
+  // Facts printed on the menu beyond items: cuisine, timings, offers…
+  notes: string[];
+  itemCount: number;
+  uploadedBy: string;
+  model?: string | null;
+}
+
+export type ContentMenu = ContentMenuBase & {
+  uploadedAt: Timestamp;
+  extractedAt?: Timestamp | null;
+};
+
+// As callables return it: dates as epoch milliseconds.
+export type ContentMenuView = ContentMenuBase & {
+  uploadedAt: number;
+  extractedAt?: number | null;
+};
+
 // ---------------------------------------------------------------- sellers
 
 // Sellers see a post once ops has shared it with them; drafts stay internal.
@@ -215,10 +265,11 @@ export function renderBlogBodyHtml(body: string): string {
     .join("\n");
 }
 
-// The post itself: what goes on a website's blog page.
-export function renderBlogArticleHtml(post: BlogContent): string {
-  const parts = [`<h1>${inline(post.title)}</h1>`];
-  if (post.coverImageUrl) {
+// The post itself: what goes on a website's blog page. A page that shows the
+// title and cover itself passes { title: false, cover: false }.
+export function renderBlogArticleHtml(post: BlogContent, opts?: { title?: boolean; cover?: boolean }): string {
+  const parts = opts?.title === false ? [] : [`<h1>${inline(post.title)}</h1>`];
+  if (post.coverImageUrl && opts?.cover !== false) {
     parts.push(`<img class="bt-blog-cover" src="${escapeHtml(post.coverImageUrl)}" alt="${escapeHtml(post.title)}">`);
   }
   if (post.answer.trim()) parts.push(`<p class="bt-blog-answer">${inline(post.answer.trim())}</p>`);
