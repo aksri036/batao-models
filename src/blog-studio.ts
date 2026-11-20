@@ -125,6 +125,35 @@ export type BlogPostView = BlogPostMeta &
     publishedAt?: number | null;
   };
 
+// ---------------------------------------------------------------- sellers
+
+// Sellers see a post once ops has shared it with them; drafts stay internal.
+export function isSellerVisibleBlog(status: BlogStatus): status is "shared" | "published" {
+  return status === "shared" || status === "published";
+}
+
+// A post as the seller dashboard shows it.
+export interface SellerBlogPost extends BlogContent {
+  id: string;
+  status: "shared" | "published";
+  dishes: string[];
+  sharedAt: number | null;
+  publishedAt: number | null;
+  publishedUrl: string | null;
+}
+
+export interface SellerBlogsResult {
+  // false: the store has no linked Google Business Profile.
+  linked: boolean;
+  // The Blogs add-on is on (monthly posts).
+  addOn: boolean;
+  postsPerMonth: number;
+  // Posts shared with the seller this calendar month (India time).
+  sharedThisMonth: number;
+  business: BlogBusiness | null;
+  posts: SellerBlogPost[];
+}
+
 // ---------------------------------------------------------------- helpers
 
 export function slugify(text: string, maxLength = 80): string {

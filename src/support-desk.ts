@@ -148,6 +148,10 @@ export interface SupportTask {
   // Recurring work: which job and which cycle (1, 2, …)
   job?: RecurringJob;
   cycleNo?: number;
+  // Blog cycles: the Blog Studio post they're for
+  // (seo-settings/{blogLocationId}/blogs/{blogId}).
+  blogId?: string;
+  blogLocationId?: string;
 
   // Steps that wait on the customer (logo, access, approvals…)
   customerStep?: boolean;
@@ -470,6 +474,19 @@ export function jobsForAccount(a: Pick<CustomerAccount, "plan" | "blogsOn">): Re
   if (a.plan !== "loyalty") jobs.push("gbp_report");
   if (a.blogsOn) jobs.push("blog");
   return jobs;
+}
+
+// Whether a job's cycles follow each other on a timer. Blog cycles don't:
+// Blog Studio starts one per post (monthly posts follow
+// BlogSettings.postsPerMonth) and moves it on as the post is shared and
+// published.
+export function jobRunsOnSchedule(job: RecurringJob): boolean {
+  return job !== "blog";
+}
+
+// Recurring jobs whose first cycle starts when an account goes live.
+export function scheduledJobsForAccount(a: Pick<CustomerAccount, "plan" | "blogsOn">): RecurringJob[] {
+  return jobsForAccount(a).filter(jobRunsOnSchedule);
 }
 
 export function jobEveryDays(job: RecurringJob, cfg: Pick<SupportDeskConfig, "recurringEveryDays">): number {
