@@ -151,6 +151,9 @@ export interface ContentMenuBase {
   fileName: string;
   storagePath: string;
   sizeBytes: number;
+  // A PDF, or a photo of a menu (jpeg, png, webp). Older menus: PDF.
+  fileType?: "pdf" | "image";
+  mimeType?: string | null;
   pageCount?: number | null;
   status: ContentMenuStatus;
   // While reading: chunks of pages read so far.
