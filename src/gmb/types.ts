@@ -1,4 +1,5 @@
 import { Timestamp } from "../timestamp";
+import { BlogSettings } from "../blog-studio";
 
 export interface StorefrontAddress {
   languageCode: string;
@@ -152,6 +153,8 @@ export interface SeoSettings {
   localFalconPlaceId?: string;
   // Batao management start date — reviews before this date are excluded from SLA and seller view
   bataoStartDate?: string; // ISO date "YYYY-MM-DD", default "2026-01-01"
+  // Blog Studio settings (posts live in the blogs sub-collection).
+  blogs?: BlogSettings;
   // Summary fields — maintained by dailyCacheRefresh cron + write hooks
   unrepliedReviewCount?: number;
   lastPostAt?: Timestamp | null;
